@@ -3,12 +3,15 @@ mod config;
 mod resources;
 mod viewport;
 
+use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
-use winit::event_loop::EventLoop;
 use config::RenderConfig;
 use context::RenderContext;
 use resources::RenderResources;
+use std::sync::Arc;
 use viewport::RenderViewport;
+use winit::event_loop::EventLoop;
+use winit::window::Window;
 
 pub struct Renderer {
     ctx: RenderContext,
@@ -20,12 +23,20 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(event_loop: &EventLoop<()>) -> Result<Self> {
         let ctx = RenderContext::new(event_loop)?;
+        let cfg = RenderConfig::default();
+        let res = RenderResources::default();
 
         Ok(Self {
             ctx,
-            cfg: RenderConfig::new(),
-            res: RenderResources::new(),
+            cfg,
+            res,
             vpt: None,
         })
+    }
+
+    pub fn set_window(&mut self, window: Arc<Window>) -> Result<()> {
+        self.vpt = Some(RenderViewport::new(window, &self.ctx)?);
+
+        Ok(())
     }
 }
