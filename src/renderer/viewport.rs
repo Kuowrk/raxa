@@ -10,12 +10,12 @@ use crate::renderer::context::RenderContext;
 
 /// Target of the renderer, where the renderer will draw to
 pub struct RenderViewport {
-    window: Arc<Window>,
-    surface: Arc<Surface>,
-    swapchain: Arc<Swapchain>,
-    swapchain_images: Vec<Arc<Image>>,
-    swapchain_image_views: Vec<Arc<ImageView>>,
-    viewport: Viewport,
+    pub window: Arc<Window>,
+    pub surface: Arc<Surface>,
+    pub swapchain: Arc<Swapchain>,
+    pub swapchain_images: Vec<Arc<Image>>,
+    pub swapchain_image_views: Vec<Arc<ImageView>>,
+    pub viewport: Viewport,
 }
 
 impl RenderViewport {
@@ -73,13 +73,8 @@ impl RenderViewport {
             )
         }?;
 
-        let swapchain_image_views = swapchain_images
-            .iter()
-            .map(|image| {
-                ImageView::new_default(image.clone())
-                    .map_err(Into::into)
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let swapchain_image_views =
+            Self::create_swapchain_image_views(&swapchain_images)?;
 
         let viewport = Viewport {
             offset: [0.0, 0.0],
@@ -95,6 +90,36 @@ impl RenderViewport {
             swapchain_image_views,
             viewport,
         })
+    }
+
+    pub fn resize(&mut self) -> Result<()> {
+        let (
+            new_swapchain,
+            new_swapchain_images,
+        ) = self.swapchain
+            .recreate(SwapchainCreateInfo {
+                image_extent: self.window.inner_size().into(),
+                ..self.swapchain.create_info()
+            })?;
+
+        self.swapchain = new_swapchain;
+        self.swapchain_images = new_swapchain_images;
+        self.swapchain_image_views = Self::create_swapchain_image_views(&self.swapchain_images)?;
+        self.viewport.extent = self.window.inner_size().into();
+
+        Ok(())
+    }
+
+    fn create_swapchain_image_views(
+        swapchain_images: &[Arc<Image>],
+    ) -> Result<Vec<Arc<ImageView>>> {
+        swapchain_images
+            .iter()
+            .map(|image| {
+                ImageView::new_default(image.clone())
+                    .map_err(Into::into)
+            })
+            .collect::<Result<Vec<_>>>()
     }
 }
 

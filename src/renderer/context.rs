@@ -4,10 +4,11 @@ use color_eyre::Result;
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo, QueueFlags};
 use vulkano::instance::{Instance, InstanceCreateFlags, InstanceCreateInfo};
 use vulkano::swapchain::Surface;
-use vulkano::{Version, VulkanLibrary};
+use vulkano::{sync, Version, VulkanLibrary};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::memory::allocator::StandardMemoryAllocator;
+use vulkano::sync::GpuFuture;
 use winit::event_loop::EventLoop;
 
 /// Contains Vulkan objects like the instance, devices, and queues
@@ -17,6 +18,7 @@ pub struct RenderContext {
     pub queue: Arc<Queue>,
     pub memory_allocator: Arc<StandardMemoryAllocator>,
     pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    pub previous_frame_end: Option<Box<dyn sync::GpuFuture>>,
 }
 
 impl RenderContext {
@@ -67,12 +69,15 @@ impl RenderContext {
             Default::default(),
         ));
 
+        let previous_frame_end = Some(sync::now(device.clone()).boxed());
+
         Ok(Self {
             instance,
             device,
             queue,
             memory_allocator,
             command_buffer_allocator,
+            previous_frame_end,
         })
     }
 

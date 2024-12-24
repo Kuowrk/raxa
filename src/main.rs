@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     env_logger::init();
 
-    let app = App::new();
+    let _app = App::new();
     //app.run()?;
 
     Ok(())

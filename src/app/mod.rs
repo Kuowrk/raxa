@@ -25,7 +25,9 @@ impl App {
 }
 
 impl ApplicationHandler for App {
+    /*
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {}
+     */
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = Arc::new(
@@ -37,24 +39,45 @@ impl ApplicationHandler for App {
         self.window = Some(window);
     }
 
+    /*
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: ()) {
     }
+     */
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent
+    ) {
+        if window_id != self.window.as_ref().unwrap().id() {
+            return;
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
+            }
+            WindowEvent::Resized(_new_size) => {
+                self.renderer.request_resize();
+            }
+            WindowEvent::RedrawRequested => {
+                self.renderer.draw().unwrap();
             }
             _ => {}
         }
     }
 
+    /*
     fn device_event(&mut self, event_loop: &ActiveEventLoop, device_id: DeviceId, event: DeviceEvent) {
     }
+     */
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        self.window.as_ref().unwrap().request_redraw();
     }
 
+    /*
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
     }
 
@@ -63,4 +86,5 @@ impl ApplicationHandler for App {
 
     fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
     }
+     */
 }
