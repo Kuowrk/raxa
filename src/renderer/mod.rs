@@ -1,23 +1,23 @@
-mod context;
-mod config;
-mod resources;
-mod viewport;
-mod state;
+mod core;
+mod camera;
+mod shader_data;
+mod util;
 
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use winit::event_loop::EventLoop;
 use winit::window::Window;
-use context::RenderContext;
-use config::RenderConfig;
-use resources::RenderResources;
-use state::RenderState;
 use std::sync::Arc;
 use vulkano::swapchain::{acquire_next_image, SwapchainPresentInfo};
 use vulkano::{sync, Validated, VulkanError};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::sync::GpuFuture;
-use viewport::RenderViewport;
+
+use core::config::RenderConfig;
+use core::context::RenderContext;
+use core::resources::RenderResources;
+use core::state::RenderState;
+use core::viewport::RenderViewport;
 
 pub struct Renderer {
     ctx: RenderContext,
@@ -31,8 +31,8 @@ impl Renderer {
     pub fn new(event_loop: &EventLoop<()>) -> Result<Self> {
         let ctx = RenderContext::new(event_loop)?;
         let cfg = RenderConfig::default();
-        let res = RenderResources::default();
-        let ste = RenderState::default();
+        let res = RenderResources::new(&ctx)?;
+        let ste = RenderState::new(&ctx)?;
 
         Ok(Self {
             ctx,
@@ -73,7 +73,7 @@ impl Renderer {
 
         // Calling this function polls various fences in order to determine what the GPU has
         // already processed and frees the resources that are no longer needed.
-        self.ctx.previous_frame_end
+        self.ste.previous_frame_end
             .as_mut()
             .ok_or_eyre("No previous frame end")?
             .cleanup_finished();
@@ -104,14 +104,14 @@ impl Renderer {
         }
 
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.ctx.command_buffer_allocator.clone(),
+            self.res.command_buffer_allocator.clone(),
             self.ctx.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
         let command_buffer = command_buffer_builder.build()?;
 
-        let future_result = self.ctx
+        let future_result = self.ste
             .previous_frame_end
             .take()
             .ok_or_eyre("No previous frame end")?
@@ -132,14 +132,14 @@ impl Renderer {
 
         match future_result.map_err(Validated::unwrap) {
             Ok(future) => {
-                self.ctx.previous_frame_end = Some(future.boxed());
+                self.ste.previous_frame_end = Some(future.boxed());
             }
             Err(VulkanError::OutOfDate) => {
                 self.request_resize();
-                self.ctx.previous_frame_end = Some(sync::now(self.ctx.device.clone()).boxed());
+                self.ste.previous_frame_end = Some(sync::now(self.ctx.device.clone()).boxed());
             }
             Err(e) => {
-                self.ctx.previous_frame_end = Some(sync::now(self.ctx.device.clone()).boxed());
+                self.ste.previous_frame_end = Some(sync::now(self.ctx.device.clone()).boxed());
                 return Err(e.into())
             }
         }

@@ -1,24 +1,18 @@
-use std::sync::Arc;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
+use std::sync::Arc;
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo, QueueFlags};
 use vulkano::instance::{Instance, InstanceCreateFlags, InstanceCreateInfo};
 use vulkano::swapchain::Surface;
-use vulkano::{sync, Version, VulkanLibrary};
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::memory::allocator::StandardMemoryAllocator;
-use vulkano::sync::GpuFuture;
+use vulkano::{Version, VulkanLibrary};
 use winit::event_loop::EventLoop;
 
-/// Contains Vulkan objects like the instance, devices, and queues
+/// Contains Vulkan objects needed to use Vulkan
 pub struct RenderContext {
     pub instance: Arc<Instance>,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
-    pub memory_allocator: Arc<StandardMemoryAllocator>,
-    pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
-    pub previous_frame_end: Option<Box<dyn sync::GpuFuture>>,
 }
 
 impl RenderContext {
@@ -53,6 +47,10 @@ impl RenderContext {
                 enabled_extensions: device_extensions,
                 enabled_features: DeviceFeatures {
                     dynamic_rendering: true,
+                    descriptor_indexing: true,
+                    runtime_descriptor_array: true,
+                    descriptor_binding_variable_descriptor_count: true,
+                    descriptor_buffer: true,
                     ..DeviceFeatures::empty()
                 },
                 ..Default::default()
@@ -62,22 +60,10 @@ impl RenderContext {
         // Only one queue was requested, so it should be the first and only one in the iterator
         let queue = queues.next().ok_or_eyre("No queues found")?;
 
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-
-        let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
-            device.clone(),
-            Default::default(),
-        ));
-
-        let previous_frame_end = Some(sync::now(device.clone()).boxed());
-
         Ok(Self {
             instance,
             device,
             queue,
-            memory_allocator,
-            command_buffer_allocator,
-            previous_frame_end,
         })
     }
 
@@ -87,6 +73,8 @@ impl RenderContext {
     ) -> Result<(Arc<PhysicalDevice>, u32, DeviceExtensions)> {
         let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
+            ext_descriptor_indexing: true,
+            ext_descriptor_buffer: true,
             ..DeviceExtensions::empty()
         };
         let (physical_device, queue_family_index) = instance

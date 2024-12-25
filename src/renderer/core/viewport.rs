@@ -6,7 +6,8 @@ use vulkano::image::view::ImageView;
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::swapchain::{ColorSpace, CompositeAlpha, Surface, Swapchain, SwapchainCreateInfo};
 use winit::window::Window;
-use crate::renderer::context::RenderContext;
+
+use crate::renderer::core::context::RenderContext;
 
 /// Target of the renderer, where the renderer will draw to
 pub struct RenderViewport {
