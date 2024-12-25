@@ -1,7 +1,8 @@
+pub mod camera;
+pub mod util;
+
 mod core;
-mod camera;
 mod shader_data;
-mod util;
 
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
@@ -103,7 +104,7 @@ impl Renderer {
             self.request_resize();
         }
 
-        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+        let command_buffer_builder = AutoCommandBufferBuilder::primary(
             self.res.command_buffer_allocator.clone(),
             self.ctx.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,

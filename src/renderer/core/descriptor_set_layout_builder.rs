@@ -1,8 +1,9 @@
-use std::collections::BTreeMap;
+use crate::renderer::core::context::RenderContext;
 use color_eyre::Result;
+use std::collections::BTreeMap;
+use std::sync::Arc;
 use vulkano::descriptor_set::layout::{DescriptorBindingFlags, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags, DescriptorSetLayoutCreateInfo, DescriptorType};
 use vulkano::shader::ShaderStages;
-use crate::renderer::core::context::RenderContext;
 
 pub struct DescriptorSetLayoutBuilder {
     bindings: Vec<(u32, DescriptorSetLayoutBinding)>
@@ -23,15 +24,16 @@ impl DescriptorSetLayoutBuilder {
         stages: ShaderStages,
         binding_flags: DescriptorBindingFlags,
     ) -> Self {
+        let mut descriptor_set_layout_binding = DescriptorSetLayoutBinding::descriptor_type(
+            descriptor_type
+        );
+        descriptor_set_layout_binding.descriptor_count = descriptor_count;
+        descriptor_set_layout_binding.stages = stages;
+        descriptor_set_layout_binding.binding_flags = binding_flags;
+
         self.bindings.push((
             binding,
-            DescriptorSetLayoutBinding {
-                descriptor_type,
-                descriptor_count,
-                stages,
-                binding_flags,
-                ..Default::default()
-            }
+            descriptor_set_layout_binding
         ));
         self
     }
@@ -39,14 +41,16 @@ impl DescriptorSetLayoutBuilder {
     pub fn build(
         self,
         ctx: &RenderContext,
-    ) -> Result<DescriptorSetLayout> {
-        DescriptorSetLayout::new(
+    ) -> Result<Arc<DescriptorSetLayout>> {
+        Ok(DescriptorSetLayout::new(
             ctx.device.clone(),
             DescriptorSetLayoutCreateInfo {
                 flags: DescriptorSetLayoutCreateFlags::empty(),
-                bindings: BTreeMap::from(self.bindings),
+                bindings: BTreeMap::from_iter(
+                    self.bindings.into_iter()
+                ),
                 ..Default::default()
             }
-        ).into()
+        )?)
     }
 }

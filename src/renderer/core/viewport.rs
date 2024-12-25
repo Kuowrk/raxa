@@ -5,6 +5,7 @@ use vulkano::image::{Image, ImageUsage};
 use vulkano::image::view::ImageView;
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::swapchain::{ColorSpace, CompositeAlpha, Surface, Swapchain, SwapchainCreateInfo};
+use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 use crate::renderer::core::context::RenderContext;
@@ -121,6 +122,10 @@ impl RenderViewport {
                     .map_err(Into::into)
             })
             .collect::<Result<Vec<_>>>()
+    }
+
+    pub fn get_size(&self) -> PhysicalSize<u32> {
+        self.window.inner_size()
     }
 }
 

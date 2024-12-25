@@ -46,11 +46,14 @@ impl RenderContext {
                 ],
                 enabled_extensions: device_extensions,
                 enabled_features: DeviceFeatures {
+                    draw_indirect_count: true,
+                    shader_draw_parameters: true,
                     dynamic_rendering: true,
                     descriptor_indexing: true,
                     runtime_descriptor_array: true,
                     descriptor_binding_variable_descriptor_count: true,
                     descriptor_buffer: true,
+                    buffer_device_address: true,
                     ..DeviceFeatures::empty()
                 },
                 ..Default::default()
@@ -73,8 +76,11 @@ impl RenderContext {
     ) -> Result<(Arc<PhysicalDevice>, u32, DeviceExtensions)> {
         let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
+            khr_draw_indirect_count: true,
+            khr_shader_draw_parameters: true,
             ext_descriptor_indexing: true,
             ext_descriptor_buffer: true,
+            ext_buffer_device_address: true,
             ..DeviceExtensions::empty()
         };
         let (physical_device, queue_family_index) = instance

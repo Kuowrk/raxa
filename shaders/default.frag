@@ -9,7 +9,7 @@ struct PerFrameData {
 };
 
 struct PerMaterialData {
-    vec4 color;
+    uint texture_index;
 };
 
 struct PerObjectData {
@@ -30,19 +30,18 @@ layout(set = 0, binding = 2) buffer PerObjectBuffer {
 
 layout(set = 0, binding = 3) uniform sampler2D textures[];
 
-layout(push_constant) uniform PushConstants {
+layout(push_constant) uniform PerDrawData {
     uint object_index;
     uint material_index;
-    uint texture_index;
-} push_constants;
+} per_draw;
 
 layout(location = 0) in vec2 in_texcoord;
 layout(location = 0) out vec4 out_color;
 
 void main() {
-    uint object_index = push_constants.object_index;
-    uint material_index = push_constants.material_index;
-    uint texture_index = push_constants.texture_index;
+    uint object_index = per_draw.object_index;
+    uint material_index = per_draw.material_index;
+    uint texture_index = per_material.data[material_index].texture_index;
 
     out_color = texture(textures[nonuniformEXT(texture_index)], in_texcoord);
 }

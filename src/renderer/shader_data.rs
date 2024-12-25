@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec2, Vec3, Vec4};
+use glam::{Mat4, Vec2, Vec3};
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, Pod, Zeroable)]
@@ -13,7 +13,7 @@ struct PerFrameData {
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, Pod, Zeroable)]
 struct PerMaterialData {
-    color: Vec4,
+    texture_index: u32,
 }
 
 #[repr(C)]
@@ -27,4 +27,13 @@ struct PerObjectData {
 struct PerVertexData {
     position: Vec3,
     texcoord: Vec2,
+}
+
+/// Data that is unique to each draw call passed as a push constant
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone, Pod, Zeroable)]
+struct PerDrawData {
+    object_index: u32,
+    material_index: u32,
+    vertex_offset: u32,
 }

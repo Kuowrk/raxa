@@ -1,33 +1,63 @@
-use std::sync::Arc;
-use color_eyre::Result;
-use winit::application::ApplicationHandler;
-use winit::event::{DeviceEvent, DeviceId, StartCause, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
-use winit::window::{Window, WindowId};
+mod input_state;
+mod camera_controller;
+
 use super::renderer::Renderer;
+use color_eyre::Result;
+use std::sync::Arc;
+use std::time::Instant;
+use winit::application::ApplicationHandler;
+use winit::event::{ElementState, KeyEvent, StartCause, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{Key, NamedKey};
+use winit::window::{Window, WindowId};
+use crate::app::camera_controller::CameraController;
+use crate::app::input_state::InputState;
+use crate::renderer::camera::Camera;
 
 pub struct App {
     renderer: Renderer,
     event_loop: EventLoop<()>,
     window: Option<Arc<Window>>,
+    camera_controller: CameraController,
+
+    // State
+    input_state: InputState,
+    prev_frame_time: Instant,
+    delta_time_secs: f32,
+    request_redraws: bool,
+    close_requested: bool,
 }
 
 impl App {
     pub fn new() -> Result<Self> {
         let event_loop = EventLoop::new()?;
         let renderer = Renderer::new(&event_loop)?;
+        let camera = Camera::new();
+        let camera_controller = CameraController::new(camera);
+
+        let input_state = InputState::default();
+
         Ok(Self {
             renderer,
             event_loop,
             window: None,
+            camera_controller,
+
+            input_state,
+            prev_frame_time: Instant::now(),
+            delta_time_secs: 0.0,
+            request_redraws: false,
+            close_requested: false,
         })
     }
 }
 
 impl ApplicationHandler for App {
-    /*
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {}
-     */
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        let curr_frame_time = Instant::now();
+        self.delta_time_secs = curr_frame_time.duration_since(self.prev_frame_time).as_secs_f32();
+        self.prev_frame_time = curr_frame_time;
+    }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window = Arc::new(
@@ -46,7 +76,7 @@ impl ApplicationHandler for App {
 
     fn window_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
+        _event_loop: &ActiveEventLoop,
         window_id: WindowId,
         event: WindowEvent
     ) {
@@ -54,16 +84,39 @@ impl ApplicationHandler for App {
             return;
         }
 
+        self.input_state.process_window_events(&event);
+
         match event {
             WindowEvent::CloseRequested => {
-                event_loop.exit();
+                self.close_requested = true;
             }
             WindowEvent::Resized(_new_size) => {
+                self.renderer.request_resize();
+            }
+            WindowEvent::ScaleFactorChanged { .. } => {
                 self.renderer.request_resize();
             }
             WindowEvent::RedrawRequested => {
                 self.renderer.draw().unwrap();
             }
+            WindowEvent::KeyboardInput {
+                event:
+                KeyEvent {
+                    logical_key: key,
+                    state: ElementState::Pressed,
+                    ..
+                },
+                ..
+            } => match key.as_ref() {
+                Key::Character("r") => {
+                    self.request_redraws = !self.request_redraws;
+                    log::info!("request_redraws: {}", self.request_redraws);
+                }
+                Key::Named(NamedKey::Escape) => {
+                    self.close_requested = true;
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -73,8 +126,14 @@ impl ApplicationHandler for App {
     }
      */
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        self.window.as_ref().unwrap().request_redraw();
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.request_redraws {
+            self.window.as_ref().unwrap().request_redraw();
+        }
+
+        if self.close_requested {
+            event_loop.exit();
+        }
     }
 
     /*

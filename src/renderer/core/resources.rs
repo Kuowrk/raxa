@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use color_eyre::Result;
 use std::sync::Arc;
 use vulkano::buffer::allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo};
@@ -18,11 +17,12 @@ const MAX_OBJECTS: u32 = 1024;
 /// Contains all the resources that the renderer will use, like shaders, textures, and models
 pub struct RenderResources {
     pub memory_allocator: Arc<StandardMemoryAllocator>,
-    pub uniform_buffer_allocator: Arc<SubbufferAllocator>,
+    pub vertex_buffer_allocator: Arc<SubbufferAllocator>,
+    pub index_buffer_allocator: Arc<SubbufferAllocator>,
     pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
     pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
 
-    pub bindless_descriptor_set_layout: DescriptorSetLayout,
+    pub bindless_descriptor_set_layout: Arc<DescriptorSetLayout>,
 }
 
 impl RenderResources {
@@ -31,11 +31,23 @@ impl RenderResources {
             StandardMemoryAllocator::new_default(ctx.device.clone())
         );
 
-        let uniform_buffer_allocator = Arc::new(
+        let vertex_buffer_allocator = Arc::new(
             SubbufferAllocator::new(
                 memory_allocator.clone(),
                 SubbufferAllocatorCreateInfo {
-                    buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                    buffer_usage: BufferUsage::VERTEX_BUFFER,
+                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                }
+            )
+        );
+
+        let index_buffer_allocator = Arc::new(
+            SubbufferAllocator::new(
+                memory_allocator.clone(),
+                SubbufferAllocatorCreateInfo {
+                    buffer_usage: BufferUsage::INDEX_BUFFER,
                     memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
                         | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                     ..Default::default()
@@ -94,7 +106,8 @@ impl RenderResources {
 
         Ok(Self {
             memory_allocator,
-            uniform_buffer_allocator,
+            vertex_buffer_allocator,
+            index_buffer_allocator,
             descriptor_set_allocator,
             command_buffer_allocator,
             bindless_descriptor_set_layout,
