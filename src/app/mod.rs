@@ -53,7 +53,7 @@ impl App {
 }
 
 impl ApplicationHandler for App {
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+    fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
         let curr_frame_time = Instant::now();
         self.delta_time_secs = curr_frame_time.duration_since(self.prev_frame_time).as_secs_f32();
         self.prev_frame_time = curr_frame_time;

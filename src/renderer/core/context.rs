@@ -12,7 +12,9 @@ use winit::event_loop::EventLoop;
 pub struct RenderContext {
     pub instance: Arc<Instance>,
     pub device: Arc<Device>,
-    pub queue: Arc<Queue>,
+    pub graphics_queue: Arc<Queue>,
+    pub compute_queue: Arc<Queue>,
+    pub transfer_queue: Arc<Queue>,
 }
 
 impl RenderContext {
@@ -31,7 +33,9 @@ impl RenderContext {
 
         let (
             physical_device,
-            queue_family_index,
+            graphics_queue_family_index,
+            compute_queue_family_index,
+            transfer_queue_family_index,
             device_extensions
         ) = Self::select_physical_device(event_loop, instance.clone())?;
 
@@ -40,7 +44,15 @@ impl RenderContext {
             DeviceCreateInfo {
                 queue_create_infos: vec![
                     QueueCreateInfo {
-                        queue_family_index,
+                        queue_family_index: graphics_queue_family_index,
+                        ..Default::default()
+                    },
+                    QueueCreateInfo {
+                        queue_family_index: compute_queue_family_index,
+                        ..Default::default()
+                    },
+                    QueueCreateInfo {
+                        queue_family_index: transfer_queue_family_index,
                         ..Default::default()
                     },
                 ],
@@ -60,20 +72,29 @@ impl RenderContext {
             },
         )?;
 
-        // Only one queue was requested, so it should be the first and only one in the iterator
-        let queue = queues.next().ok_or_eyre("No queues found")?;
+        let graphics_queue = queues.next().ok_or_eyre("No graphics queue found")?;
+        let compute_queue = queues.next().ok_or_eyre("No compute queue found")?;
+        let transfer_queue = queues.next().ok_or_eyre("No transfer queue found")?;
 
         Ok(Self {
             instance,
             device,
-            queue,
+            graphics_queue,
+            compute_queue,
+            transfer_queue,
         })
     }
 
     fn select_physical_device(
         event_loop: &EventLoop<()>,
         instance: Arc<Instance>,
-    ) -> Result<(Arc<PhysicalDevice>, u32, DeviceExtensions)> {
+    ) -> Result<(
+        Arc<PhysicalDevice>,
+        u32,
+        u32,
+        u32,
+        DeviceExtensions
+    )> {
         let mut device_extensions = DeviceExtensions {
             khr_swapchain: true,
             khr_draw_indirect_count: true,
@@ -83,7 +104,12 @@ impl RenderContext {
             ext_buffer_device_address: true,
             ..DeviceExtensions::empty()
         };
-        let (physical_device, queue_family_index) = instance
+        let (
+            physical_device,
+            graphics_queue_family_index,
+            compute_queue_family_index,
+            transfer_queue_family_index,
+        ) = instance
             .enumerate_physical_devices()?
             .filter(|p| {
                 p.api_version() >= Version::V1_3 || p.supported_extensions().khr_dynamic_rendering
@@ -92,16 +118,49 @@ impl RenderContext {
                 p.supported_extensions().contains(&device_extensions)
             })
             .filter_map(|p| {
-                p.queue_family_properties()
+                let graphics_queue_family_index = p
+                    .queue_family_properties()
                     .iter()
                     .enumerate()
                     .position(|(i, q)| {
-                        q.queue_flags.intersects(QueueFlags::GRAPHICS | QueueFlags::COMPUTE)
+                        q.queue_flags.intersects(QueueFlags::GRAPHICS)
                             && p.presentation_support(i as u32, event_loop).unwrap_or(false)
-                    })
-                    .map(|i| (p, i as u32))
+                    });
+
+                let compute_queue_family_index = p
+                    .queue_family_properties()
+                    .iter()
+                    .position(|q| {
+                        q.queue_flags.intersects(QueueFlags::COMPUTE)
+                    });
+
+                let transfer_queue_family_index = p
+                    .queue_family_properties()
+                    .iter()
+                    .position(|q| {
+                        q.queue_flags.intersects(QueueFlags::TRANSFER)
+                    });
+
+                if let (
+                    Some(graphics_queue_family_index),
+                    Some(compute_queue_family_index),
+                    Some(transfer_queue_family_index)
+                ) = (
+                    graphics_queue_family_index,
+                    compute_queue_family_index,
+                    transfer_queue_family_index
+                ) {
+                    Some((
+                        p,
+                        graphics_queue_family_index as u32,
+                        compute_queue_family_index as u32,
+                        transfer_queue_family_index as u32
+                    ))
+                } else {
+                    None
+                }
             })
-            .min_by_key(|(p, _)| {
+            .min_by_key(|(p, _, _, _)| {
                 match p.properties().device_type {
                     PhysicalDeviceType::DiscreteGpu => 0,
                     PhysicalDeviceType::IntegratedGpu => 1,
@@ -120,6 +179,12 @@ impl RenderContext {
             device_extensions.khr_dynamic_rendering = true;
         }
 
-        Ok((physical_device, queue_family_index, device_extensions))
+        Ok((
+            physical_device,
+            graphics_queue_family_index,
+            compute_queue_family_index,
+            transfer_queue_family_index,
+            device_extensions
+        ))
     }
 }

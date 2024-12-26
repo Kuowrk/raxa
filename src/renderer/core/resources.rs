@@ -14,7 +14,7 @@ const MAX_TEXTURES: u32 = 1024;
 const MAX_MATERIALS: u32 = 256;
 const MAX_OBJECTS: u32 = 1024;
 
-/// Contains all the resources that the renderer will use, like shaders, textures, and models
+/// Contains all the resources that the renderer will use like materials, textures, and models
 pub struct RenderResources {
     pub memory_allocator: Arc<StandardMemoryAllocator>,
     pub vertex_buffer_allocator: Arc<SubbufferAllocator>,
