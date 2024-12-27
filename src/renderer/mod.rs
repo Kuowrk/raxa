@@ -4,6 +4,7 @@ pub mod util;
 mod core;
 mod shader_data;
 mod resources;
+mod vk;
 
 use std::ops::Deref;
 use color_eyre::eyre::OptionExt;
@@ -11,11 +12,6 @@ use color_eyre::Result;
 use winit::event_loop::EventLoop;
 use winit::window::Window;
 use std::sync::Arc;
-use vulkano::swapchain::{acquire_next_image, SwapchainAcquireFuture, SwapchainPresentInfo};
-use vulkano::{sync, NonExhaustive, Validated, VulkanError};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo};
-use vulkano::render_pass::{AttachmentLoadOp, AttachmentStoreOp};
-use vulkano::sync::GpuFuture;
 
 use core::config::RenderConfig;
 use core::context::RenderContext;
@@ -74,6 +70,11 @@ impl Renderer {
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
+        let mut vertex_buffers = Vec::new();
+        for model in &self.res.models {
+            vertex_buffers.push(model.vertex_buffer.clone());
+        }
+
         cmd.begin_rendering(RenderingInfo {
             color_attachments: vec![
                 Some(RenderingAttachmentInfo::image_view(
@@ -88,7 +89,7 @@ impl Renderer {
             )?
             .bind_vertex_buffers(
                 0,
-                &self.res.vertex_buffer_allocator
+                self.res.vertex_buffer_allocator
             )?;
 
         let cmd = cmd.build()?;

@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use std::sync::Arc;
+use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use vulkano::buffer::allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo};
 use vulkano::buffer::{Buffer, BufferUsage};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
@@ -8,7 +9,7 @@ use vulkano::descriptor_set::layout::{DescriptorBindingFlags, DescriptorSetLayou
 use vulkano::memory::allocator::{MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::shader::ShaderStages;
 use crate::renderer::core::context::RenderContext;
-use crate::renderer::core::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
+use crate::renderer::vk::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 
 const MAX_TEXTURES: u32 = 1024;
 const MAX_MATERIALS: u32 = 256;
@@ -27,6 +28,22 @@ pub struct RenderResources {
 
 impl RenderResources {
     pub fn new(ctx: &RenderContext) -> Result<Self> {
+        let mut memory_allocator = Allocator::new(&AllocatorCreateDesc {
+            instance: ctx.instance.clone(),
+            device: ctx.device.clone(),
+            physical_device: ctx.physical_device,
+            debug_settings: AllocatorDebugSettings {
+                log_memory_information: true,
+                log_leaks_on_shutdown: true,
+                store_stack_traces: false,
+                log_allocations: true,
+                log_frees: true,
+                log_stack_traces: false,
+            },
+            buffer_device_address: true,
+            allocation_sizes: Default::default(),
+        })?;
+
         let memory_allocator = Arc::new(
             StandardMemoryAllocator::new_default(ctx.device.clone())
         );
@@ -84,7 +101,7 @@ impl RenderResources {
                 DescriptorType::StorageBuffer,
                 MAX_MATERIALS,
                 ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
+                DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT | DescriptorBindingFlags::Desc,
             )
             // Per-object storage buffer
             .add_binding(
