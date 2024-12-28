@@ -15,9 +15,9 @@ use crate::app::input_state::InputState;
 use crate::renderer::camera::Camera;
 
 pub struct App {
-    renderer: Renderer,
-    event_loop: EventLoop<()>,
     window: Option<Arc<Window>>,
+    renderer: Option<Renderer>,
+    event_loop: EventLoop<()>,
     camera_controller: CameraController,
 
     // State
@@ -31,19 +31,16 @@ pub struct App {
 impl App {
     pub fn new() -> Result<Self> {
         let event_loop = EventLoop::new()?;
-        let renderer = Renderer::new(&event_loop)?;
         let camera = Camera::new();
         let camera_controller = CameraController::new(camera);
 
-        let input_state = InputState::default();
-
         Ok(Self {
-            renderer,
-            event_loop,
             window: None,
+            renderer: None,
+            event_loop,
             camera_controller,
 
-            input_state,
+            input_state: InputState::default(),
             prev_frame_time: Instant::now(),
             delta_time_secs: 0.0,
             request_redraws: false,
@@ -60,13 +57,17 @@ impl ApplicationHandler for App {
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes())
-                .unwrap()
-        );
-        self.renderer.set_window(window.clone()).unwrap();
-        self.window = Some(window);
+        if self.window.is_none() {
+            self.window = Some(Arc::new(
+                event_loop
+                    .create_window(Window::default_attributes())
+                    .unwrap()
+            ));
+        }
+
+        if self.renderer.is_none() {
+            self.renderer = Some(Renderer::new(&self.event_loop, self.window.clone()).unwrap());
+        }
     }
 
     /*

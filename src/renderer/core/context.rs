@@ -1,29 +1,32 @@
 use std::ffi::{c_char, c_void, CStr, CString};
 use ash::vk;
+use ash::vk::QueueFlags;
 use color_eyre::eyre::OptionExt;
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use std::sync::Arc;
-use ash::vk::QueueFlags;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::event_loop::EventLoop;
+use winit::window::Window;
 
-/// Contains Vulkan objects needed to use Vulkan
+/// Contains Vulkan objects
 pub struct RenderContext {
     pub instance: ash::Instance,
     pub device: ash::Device,
+    pub physical_device: vk::PhysicalDevice,
 
-    pub graphics_queue: vk::Queue,
-    pub compute_queue: vk::Queue,
-    pub transfer_queue: vk::Queue,
+    pub graphics_queue: Arc<vk::Queue>,
+    pub compute_queue: Arc<vk::Queue>,
+    pub transfer_queue: Arc<vk::Queue>,
 
     pub graphics_queue_family: u32,
     pub compute_queue_family: u32,
     pub transfer_queue_family: u32,
 
-    pub surface: Option<vk::SurfaceKHR>,
-    pub surface_loader: Option<ash::khr::surface::Instance>,
+    pub surface: Option<Arc<vk::SurfaceKHR>>,
+    pub surface_loader: Option<Arc<ash::khr::surface::Instance>>,
 
+    entry: ash::Entry,
     debug_utils_messenger: vk::DebugUtilsMessengerEXT,
     debug_utils_loader: ash::ext::debug_utils::Instance,
 }
@@ -36,7 +39,7 @@ impl RenderContext {
 
     pub fn new(
         event_loop: &EventLoop<()>,
-        window: Option<&winit::window::Window>,
+        window: Option<&Arc<Window>>,
     ) -> Result<Self> {
         let entry = ash::Entry::linked();
 
@@ -52,90 +55,49 @@ impl RenderContext {
         };
         let (
             physical_device,
-            graphics_queue_family_index,
-            compute_queue_family_index,
-            transfer_queue_family_index,
+            graphics_queue_family,
+            compute_queue_family,
+            transfer_queue_family,
         ) = Self::select_physical_device(&instance, surface.as_ref())?;
 
-        /*
-
-        let (device, mut queues) = Device::new(
-            physical_device,
-            DeviceCreateInfo {
-                queue_create_infos: vec![
-                    QueueCreateInfo {
-                        queue_family_index: graphics_queue_family_index,
-                        ..Default::default()
-                    },
-                    QueueCreateInfo {
-                        queue_family_index: compute_queue_family_index,
-                        ..Default::default()
-                    },
-                    QueueCreateInfo {
-                        queue_family_index: transfer_queue_family_index,
-                        ..Default::default()
-                    },
-                ],
-                enabled_extensions: device_extensions,
-                enabled_features: DeviceFeatures {
-                    draw_indirect_count: true,
-                    shader_draw_parameters: true,
-                    dynamic_rendering: true,
-                    descriptor_indexing: true,
-                    runtime_descriptor_array: true,
-                    descriptor_binding_variable_descriptor_count: true,
-                    descriptor_buffer: true,
-                    buffer_device_address: true,
-                    ..DeviceFeatures::empty()
-                },
-                ..Default::default()
-            },
-        )?;
-
-        let graphics_queue = queues.next().ok_or_eyre("No graphics queue found")?;
-        let compute_queue = queues.next().ok_or_eyre("No compute queue found")?;
-        let transfer_queue = queues.next().ok_or_eyre("No transfer queue found")?;
-
-        Ok(Self {
-            instance,
+        let (
             device,
             graphics_queue,
             compute_queue,
             transfer_queue,
+        ) = Self::create_device(
+            &instance,
+            &physical_device,
+            graphics_queue_family,
+            compute_queue_family,
+            transfer_queue_family,
+        )?;
+
+        let (
+            surface,
+            surface_loader,
+        ) = if let Some((s, l)) = surface {
+            (Some(Arc::new(s)), Some(Arc::new(l)))
+        } else {
+            (None, None)
+        };
+
+        Ok(Self {
+            instance,
+            device,
+            physical_device,
+            graphics_queue: Arc::new(graphics_queue),
+            compute_queue: Arc::new(compute_queue),
+            transfer_queue: Arc::new(transfer_queue),
+            graphics_queue_family,
+            compute_queue_family,
+            transfer_queue_family,
+            surface,
+            surface_loader,
+            entry,
+            debug_utils_messenger,
+            debug_utils_loader,
         })
-         */
-    }
-
-    fn get_required_instance_extensions(
-        event_loop: &EventLoop<()>
-    ) -> Result<Vec<&'static CStr>> {
-        let mut exts = ash_window::enumerate_required_extensions(
-            event_loop.display_handle()?.as_raw()
-        )?
-            .iter()
-            .map(|ext| unsafe {
-                CStr::from_ptr(*ext)
-            })
-            .collect::<Vec<_>>();
-
-        if Self::ENABLE_VALIDATION_LAYERS {
-            exts.push(ash::ext::debug_utils::NAME);
-        }
-
-        #[cfg(target_os = "macos")]
-        exts.push(ash::khr::get_physical_device_properties2::NAME);
-
-        Ok(exts)
-    }
-
-    fn get_required_device_extensions() -> Vec<&'static CStr> {
-        vec![
-            ash::khr::swapchain::NAME,
-            ash::khr::dynamic_rendering::NAME,
-
-            #[cfg(target_os = "macos")]
-            ash::khr::portability_subset::NAME,
-        ]
     }
 
     fn create_instance(
@@ -167,6 +129,10 @@ impl RenderContext {
             .enabled_extension_names(&enabled_extension_names)
             .push_next(&mut debug_info);
 
+        #[cfg(target_os = "macos")]
+        let instance_info = instance_info
+            .flags(vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR);
+
         Ok(unsafe {
             entry.create_instance(&instance_info, None)?
         })
@@ -185,8 +151,8 @@ impl RenderContext {
     }
 
     fn create_surface(
-        entry: &Entry,
-        instance: &Instance,
+        entry: &ash::Entry,
+        instance: &ash::Instance,
         window: &winit::window::Window,
     ) -> Result<(vk::SurfaceKHR, ash::khr::surface::Instance)> {
         let surface = unsafe {
@@ -300,6 +266,88 @@ impl RenderContext {
                 })
                 .ok_or_eyre("No suitable physical device found")?
         })
+    }
+
+    fn create_device(
+        instance: &ash::Instance,
+        physical_device: &vk::PhysicalDevice,
+        graphics_queue_family: u32,
+        compute_queue_family: u32,
+        transfer_queue_family: u32,
+    ) -> Result<(ash::Device, vk::Queue, vk::Queue, vk::Queue)> {
+        let queue_priorities = [1.0];
+        let queue_create_infos = [
+            vk::DeviceQueueCreateInfo::default()
+                .queue_family_index(graphics_queue_family)
+                .queue_priorities(&queue_priorities),
+            vk::DeviceQueueCreateInfo::default()
+                .queue_family_index(compute_queue_family)
+                .queue_priorities(&queue_priorities),
+            vk::DeviceQueueCreateInfo::default()
+                .queue_family_index(transfer_queue_family)
+                .queue_priorities(&queue_priorities),
+        ];
+        let enabled_extension_names = Self::get_required_device_extensions()
+            .iter()
+            .map(|ext| ext.as_ptr())
+            .collect::<Vec<*const c_char>>();
+        let enabled_features = vk::PhysicalDeviceFeatures::default();
+
+        let device_create_info = vk::DeviceCreateInfo::default()
+            .queue_create_infos(&queue_create_infos)
+            .enabled_extension_names(&enabled_extension_names)
+            .enabled_features(&enabled_features);
+
+        let device = unsafe {
+            instance.create_device(*physical_device, &device_create_info, None)?
+        };
+
+        let graphics_queue = unsafe {
+            device.get_device_queue(graphics_queue_family, 0)
+        };
+        let compute_queue = unsafe {
+            device.get_device_queue(compute_queue_family, 0)
+        };
+        let transfer_queue = unsafe {
+            device.get_device_queue(transfer_queue_family, 0)
+        };
+
+        Ok((device, graphics_queue, compute_queue, transfer_queue))
+    }
+
+    fn get_required_instance_extensions(
+        event_loop: &EventLoop<()>
+    ) -> Result<Vec<&'static CStr>> {
+        let mut exts = ash_window::enumerate_required_extensions(
+            event_loop.display_handle()?.as_raw()
+        )?
+            .iter()
+            .map(|ext| unsafe {
+                CStr::from_ptr(*ext)
+            })
+            .collect::<Vec<_>>();
+
+        if Self::ENABLE_VALIDATION_LAYERS {
+            exts.push(ash::ext::debug_utils::NAME);
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            exts.push(ash::khr::portability_enumeration::NAME);
+            exts.push(ash::khr::get_physical_device_properties2::NAME);
+        }
+
+        Ok(exts)
+    }
+
+    fn get_required_device_extensions() -> Vec<&'static CStr> {
+        vec![
+            ash::khr::swapchain::NAME,
+            ash::khr::dynamic_rendering::NAME,
+
+            #[cfg(target_os = "macos")]
+            ash::khr::portability_subset::NAME,
+        ]
     }
 
     fn check_validation_layers_supported(entry: &ash::Entry) -> Result<()> {

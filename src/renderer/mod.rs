@@ -10,7 +10,6 @@ use std::ops::Deref;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use winit::event_loop::EventLoop;
-use winit::window::Window;
 use std::sync::Arc;
 
 use core::config::RenderConfig;
@@ -21,32 +20,34 @@ use core::viewport::RenderViewport;
 
 pub struct Renderer {
     ctx: RenderContext,
+    vpt: Option<RenderViewport>,
     cfg: RenderConfig,
     res: RenderResources,
     ste: RenderState,
-    vpt: Option<RenderViewport>,
 }
 
 impl Renderer {
-    pub fn new(event_loop: &EventLoop<()>) -> Result<Self> {
-        let ctx = RenderContext::new(event_loop)?;
+    pub fn new(
+        event_loop: &EventLoop<()>,
+        window: Option<Arc<winit::window::Window>>
+    ) -> Result<Self> {
+        let ctx = RenderContext::new(event_loop, window.as_ref())?;
+        let vpt = if window.is_some() {
+            Some(RenderViewport::new(window.unwrap(), &ctx)?)
+        } else {
+            None
+        };
         let cfg = RenderConfig::default();
         let res = RenderResources::new(&ctx)?;
         let ste = RenderState::new(&ctx)?;
 
         Ok(Self {
             ctx,
+            vpt,
             cfg,
             res,
             ste,
-            vpt: None,
         })
-    }
-
-    pub fn set_window(&mut self, window: Arc<Window>) -> Result<()> {
-        self.vpt = Some(RenderViewport::new(window, &self.ctx)?);
-
-        Ok(())
     }
 
     pub fn request_resize(&mut self) {
