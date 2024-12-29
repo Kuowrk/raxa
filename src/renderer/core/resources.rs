@@ -1,14 +1,10 @@
 use color_eyre::Result;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
-use vulkano::buffer::allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo};
-use vulkano::buffer::{Buffer, BufferUsage};
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::descriptor_set::layout::{DescriptorBindingFlags, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags, DescriptorSetLayoutCreateInfo, DescriptorType};
-use vulkano::memory::allocator::{MemoryTypeFilter, StandardMemoryAllocator};
-use vulkano::shader::ShaderStages;
+use ash::vk;
 use crate::renderer::core::context::RenderContext;
+use crate::renderer::vk::command_buffer_allocator::CommandBufferAllocator;
+use crate::renderer::vk::descriptor_set_allocator::DescriptorSetAllocator;
 use crate::renderer::vk::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 
 const MAX_TEXTURES: u32 = 1024;
@@ -17,22 +13,21 @@ const MAX_OBJECTS: u32 = 1024;
 
 /// Contains all the resources that the renderer will use like materials, textures, and models
 pub struct RenderResources {
-    pub memory_allocator: Arc<StandardMemoryAllocator>,
-    pub vertex_buffer_allocator: Arc<SubbufferAllocator>,
-    pub index_buffer_allocator: Arc<SubbufferAllocator>,
-    pub descriptor_set_allocator: Arc<StandardDescriptorSetAllocator>,
-    pub command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
+    pub memory_allocator: Arc<Mutex<Allocator>>,
 
-    pub bindless_descriptor_set_layout: Arc<DescriptorSetLayout>,
+    pub descriptor_set_allocator: Arc<DescriptorSetAllocator>,
+    pub command_buffer_allocator: Arc<CommandBufferAllocator>,
+
+    pub bindless_descriptor_set_layout: Arc<vk::DescriptorSetLayout>,
 }
 
 impl RenderResources {
     pub fn new(ctx: &RenderContext) -> Result<Self> {
         let mut memory_allocator = Allocator::new(&AllocatorCreateDesc {
             instance: ctx.instance.clone(),
-            device: ctx.device.clone(),
+            device: (*ctx.device).clone(),
             physical_device: ctx.physical_device,
-            debug_settings: AllocatorDebugSettings {
+            debug_settings: gpu_allocator::AllocatorDebugSettings {
                 log_memory_information: true,
                 log_leaks_on_shutdown: true,
                 store_stack_traces: false,
@@ -43,34 +38,6 @@ impl RenderResources {
             buffer_device_address: true,
             allocation_sizes: Default::default(),
         })?;
-
-        let memory_allocator = Arc::new(
-            StandardMemoryAllocator::new_default(ctx.device.clone())
-        );
-
-        let vertex_buffer_allocator = Arc::new(
-            SubbufferAllocator::new(
-                memory_allocator.clone(),
-                SubbufferAllocatorCreateInfo {
-                    buffer_usage: BufferUsage::VERTEX_BUFFER,
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                }
-            )
-        );
-
-        let index_buffer_allocator = Arc::new(
-            SubbufferAllocator::new(
-                memory_allocator.clone(),
-                SubbufferAllocatorCreateInfo {
-                    buffer_usage: BufferUsage::INDEX_BUFFER,
-                    memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                    ..Default::default()
-                }
-            )
-        );
 
         let descriptor_set_allocator = Arc::new(
             StandardDescriptorSetAllocator::new(

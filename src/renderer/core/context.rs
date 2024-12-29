@@ -8,11 +8,12 @@ use std::sync::Arc;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::event_loop::EventLoop;
 use winit::window::Window;
+use crate::renderer::vk::transfer_context::TransferContext;
 
 /// Contains Vulkan objects
 pub struct RenderContext {
     pub instance: ash::Instance,
-    pub device: ash::Device,
+    pub device: Arc<ash::Device>,
     pub physical_device: vk::PhysicalDevice,
 
     pub graphics_queue: Arc<vk::Queue>,
@@ -25,6 +26,8 @@ pub struct RenderContext {
 
     pub surface: Option<Arc<vk::SurfaceKHR>>,
     pub surface_loader: Option<Arc<ash::khr::surface::Instance>>,
+
+    pub transfer_context: TransferContext,
 
     entry: ash::Entry,
     debug_utils_messenger: vk::DebugUtilsMessengerEXT,
@@ -73,6 +76,17 @@ impl RenderContext {
             transfer_queue_family,
         )?;
 
+        let device = Arc::new(device);
+        let graphics_queue = Arc::new(graphics_queue);
+        let compute_queue = Arc::new(compute_queue);
+        let transfer_queue = Arc::new(transfer_queue);
+
+        let transfer_context = TransferContext::new(
+            device.clone(),
+            transfer_queue.clone(),
+            transfer_queue_family,
+        )?;
+
         let (
             surface,
             surface_loader,
@@ -86,14 +100,15 @@ impl RenderContext {
             instance,
             device,
             physical_device,
-            graphics_queue: Arc::new(graphics_queue),
-            compute_queue: Arc::new(compute_queue),
-            transfer_queue: Arc::new(transfer_queue),
+            graphics_queue,
+            compute_queue,
+            transfer_queue,
             graphics_queue_family,
             compute_queue_family,
             transfer_queue_family,
             surface,
             surface_loader,
+            transfer_context,
             entry,
             debug_utils_messenger,
             debug_utils_loader,
@@ -287,16 +302,52 @@ impl RenderContext {
                 .queue_family_index(transfer_queue_family)
                 .queue_priorities(&queue_priorities),
         ];
+
         let enabled_extension_names = Self::get_required_device_extensions()
             .iter()
             .map(|ext| ext.as_ptr())
             .collect::<Vec<*const c_char>>();
-        let enabled_features = vk::PhysicalDeviceFeatures::default();
+
+        let mut dynamic_rendering_features = vk::PhysicalDeviceDynamicRenderingFeaturesKHR::default()
+            .dynamic_rendering(true);
+        let mut synchronization2_features = vk::PhysicalDeviceSynchronization2FeaturesKHR::default()
+            .synchronization2(true);
+        let mut buffer_device_address_features = vk::PhysicalDeviceBufferDeviceAddressFeatures::default()
+            .buffer_device_address(true);
+        let mut shader_draw_parameters_features = vk::PhysicalDeviceShaderDrawParametersFeatures::default()
+            .shader_draw_parameters(true);
+        let mut descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default()
+            .descriptor_binding_variable_descriptor_count(true);
+        let mut descriptor_buffer_features = vk::PhysicalDeviceDescriptorBufferFeaturesEXT::default()
+            .descriptor_buffer(true);
+        let mut enabled_features = vk::PhysicalDeviceFeatures2KHR::default()
+            .push_next(&mut dynamic_rendering_features)
+            .push_next(&mut synchronization2_features)
+            .push_next(&mut buffer_device_address_features)
+            .push_next(&mut shader_draw_parameters_features)
+            .push_next(&mut descriptor_indexing_features)
+            .push_next(&mut descriptor_buffer_features);
+
+        // Query physical device features
+        unsafe {
+            instance.get_physical_device_features2(*physical_device, &mut enabled_features);
+        }
+
+        // Check if the required features are supported
+        if dynamic_rendering_features.dynamic_rendering == vk::FALSE
+            || synchronization2_features.synchronization2 == vk::FALSE
+            || buffer_device_address_features.buffer_device_address == vk::FALSE
+            || shader_draw_parameters_features.shader_draw_parameters == vk::FALSE
+            || descriptor_indexing_features.descriptor_binding_variable_descriptor_count == vk::FALSE
+            || descriptor_buffer_features.descriptor_buffer == vk::FALSE
+        {
+            return Err(eyre!("Required features not supported"));
+        }
 
         let device_create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&enabled_extension_names)
-            .enabled_features(&enabled_features);
+            .push_next(&mut enabled_features);
 
         let device = unsafe {
             instance.create_device(*physical_device, &device_create_info, None)?
@@ -344,6 +395,11 @@ impl RenderContext {
         vec![
             ash::khr::swapchain::NAME,
             ash::khr::dynamic_rendering::NAME,
+            ash::khr::buffer_device_address::NAME,
+            ash::khr::synchronization2::NAME,
+            ash::khr::maintenance3::NAME,
+            ash::ext::descriptor_indexing::NAME,
+            ash::ext::descriptor_buffer::NAME,
 
             #[cfg(target_os = "macos")]
             ash::khr::portability_subset::NAME,

@@ -92,13 +92,13 @@ impl ApplicationHandler for App {
                 self.close_requested = true;
             }
             WindowEvent::Resized(_new_size) => {
-                self.renderer.request_resize();
+                self.renderer.as_mut().unwrap().request_resize();
             }
             WindowEvent::ScaleFactorChanged { .. } => {
-                self.renderer.request_resize();
+                self.renderer.as_mut().unwrap().request_resize();
             }
             WindowEvent::RedrawRequested => {
-                self.renderer.draw().unwrap();
+                self.renderer.as_mut().unwrap().draw().unwrap();
             }
             WindowEvent::KeyboardInput {
                 event:
