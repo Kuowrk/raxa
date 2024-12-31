@@ -1,11 +1,9 @@
 use super::mesh::Mesh;
 use super::vertex::Vertex;
 use crate::renderer::core::resources::RenderResources;
-use crate::renderer::core::viewport::RenderViewport;
 use crate::renderer::shader_data::PerVertexData;
 use color_eyre::eyre::{eyre, Result};
 use glam::Vec3;
-use vulkano::buffer::Subbuffer;
 
 pub struct FullscreenQuad {
     quad_model: Model,

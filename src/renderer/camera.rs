@@ -1,4 +1,4 @@
-use crate::renderer::core::viewport::RenderViewport;
+use crate::renderer::core::target::RenderViewport;
 use crate::renderer::util;
 use glam::{Mat4, Vec3};
 
@@ -48,9 +48,9 @@ impl Camera {
 
     pub fn get_viewproj_mat(
         &self,
-        vpt: &RenderViewport,
+        window: &winit::window::Window,
     ) -> Mat4 {
-        self.get_proj_mat(vpt) * self.get_view_mat()
+        self.get_proj_mat(window) * self.get_view_mat()
     }
 
     pub fn get_view_mat(&self) -> Mat4 {
@@ -59,10 +59,10 @@ impl Camera {
 
     pub fn get_proj_mat(
         &self,
-        vpt: &RenderViewport,
+        window: &winit::window::Window,
     ) -> Mat4 {
-        let vpt_size = vpt.get_size();
-        let aspect_ratio = vpt_size.width as f32 / vpt_size.height as f32;
+        let size = window.inner_size();
+        let aspect_ratio = size.width as f32 / size.height as f32;
         Mat4::perspective_rh(
             self.fov_y_deg.to_radians(),
             aspect_ratio,

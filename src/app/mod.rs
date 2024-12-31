@@ -66,7 +66,7 @@ impl ApplicationHandler for App {
         }
 
         if self.renderer.is_none() {
-            self.renderer = Some(Renderer::new(&self.event_loop, self.window.clone()).unwrap());
+            self.renderer = Some(Renderer::new(self.window.clone()).unwrap());
         }
     }
 

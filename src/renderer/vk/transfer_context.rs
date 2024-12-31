@@ -1,28 +1,27 @@
-use std::sync::Arc;
 use ash::vk;
 use color_eyre::eyre::Result;
+use crate::renderer::vk::queue::Queue;
 
-pub struct TransferContext {
+pub struct TransferContext<'a> {
     transfer_fence: vk::Fence,
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
 
-    device: Arc<ash::Device>,
-    transfer_queue: Arc<vk::Queue>,
+    transfer_queue: &'a Queue,
+    device: &'a ash::Device,
 }
 
-impl TransferContext {
+impl TransferContext<'_> {
     pub fn new(
-        device: Arc<ash::Device>,
-        transfer_queue: Arc<vk::Queue>,
-        transfer_queue_family: u32,
+        transfer_queue: &Queue,
+        device: &ash::Device,
     ) -> Result<Self> {
         let transfer_fence_info = vk::FenceCreateInfo::default();
         let transfer_fence =
             unsafe { device.create_fence(&transfer_fence_info, None)? };
 
         let command_pool_info = vk::CommandPoolCreateInfo::default()
-            .queue_family_index(transfer_queue_family)
+            .queue_family_index(transfer_queue.family.index)
             // Allow the pool to reset individual command buffers
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
         let command_pool =
@@ -40,9 +39,8 @@ impl TransferContext {
             transfer_fence,
             command_pool,
             command_buffer,
-
-            device,
             transfer_queue,
+            device,
         })
     }
 
@@ -80,14 +78,14 @@ impl TransferContext {
             .signal_semaphores(&[]);
         unsafe {
             self.device.queue_submit(
-                *self.transfer_queue,
+                self.transfer_queue.handle,
                 &[submit],
                 self.transfer_fence
             )?;
         }
 
         unsafe {
-            // upload_fence will now block until the graphics commands finish execution
+            // `transfer_fence` will now block until the commands finish execution
             self.device.wait_for_fences(&[self.transfer_fence], true, 9999999999)?;
             self.device.reset_fences(&[self.transfer_fence])?;
             // Reset command buffers inside command pool
@@ -101,7 +99,7 @@ impl TransferContext {
     }
 }
 
-impl Drop for TransferContext {
+impl Drop for TransferContext<'_> {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_command_pool(self.command_pool, None);

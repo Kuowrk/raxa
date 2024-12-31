@@ -3,17 +3,16 @@ use ash::prelude::VkResult;
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
-use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
 use crate::renderer::core::context::RenderContext;
 
-/// Target of the renderer, where the renderer will draw to
-pub struct RenderViewport {
+/// Presentation target of the renderer, encapsulating the window, surface, and swapchain
+pub struct RenderTarget {
     pub window: Arc<Window>,
 
-    pub surface: Arc<vk::SurfaceKHR>,
-    pub surface_loader: Arc<ash::khr::surface::Instance>,
+    pub surface: vk::SurfaceKHR,
+    pub surface_loader: ash::khr::surface::Instance,
     pub surface_format: vk::SurfaceFormatKHR,
 
     pub swapchain: vk::SwapchainKHR,
@@ -22,11 +21,13 @@ pub struct RenderViewport {
     pub swapchain_image_views: Vec<vk::ImageView>,
 }
 
-impl RenderViewport {
-    pub fn new(window: Arc<Window>, ctx: &RenderContext) -> Result<Self> {
-        let surface = ctx.surface.clone().ok_or_eyre("No surface")?;
-        let surface_loader = ctx.surface_loader.clone().ok_or_eyre("No surface loader")?;
-
+impl RenderTarget {
+    pub fn new(
+        window: Arc<Window>,
+        surface: vk::SurfaceKHR,
+        surface_loader: ash::khr::surface::Instance,
+        ctx: &RenderContext,
+    ) -> Result<Self> {
         let (
             swapchain,
             swapchain_loader,
@@ -70,19 +71,21 @@ impl RenderViewport {
         ash::khr::swapchain::Device,
         vk::SurfaceFormatKHR,
     )> {
+        let physical_device = ctx.device.physical;
+
         let surface_capabilities = unsafe {
             surface_loader
-                .get_physical_device_surface_capabilities(ctx.physical_device, *surface)?
+                .get_physical_device_surface_capabilities(physical_device, *surface)?
         };
 
         let surface_formats = unsafe {
             surface_loader
-                .get_physical_device_surface_formats(ctx.physical_device, *surface)?
+                .get_physical_device_surface_formats(physical_device, *surface)?
         };
 
         let surface_present_modes = unsafe {
             surface_loader
-                .get_physical_device_surface_present_modes(ctx.physical_device, *surface)?
+                .get_physical_device_surface_present_modes(physical_device, *surface)?
         };
 
         let surface_format = surface_formats
@@ -137,7 +140,8 @@ impl RenderViewport {
             surface_capabilities.current_transform
         };
 
-        let swapchain_loader = ash::khr::swapchain::Device::new(&ctx.instance, &ctx.device);
+        let swapchain_loader = ash::khr::swapchain::Device::new(
+            &ctx.instance, &ctx.device.logical);
         let swapchain_info = vk::SwapchainCreateInfoKHR::default()
             .surface(*surface)
             .min_image_count(min_image_count)
@@ -196,7 +200,7 @@ impl RenderViewport {
                     })
                     .image(*image);
                 unsafe {
-                    ctx.device.create_image_view(&view_info, None)
+                    ctx.device.logical.create_image_view(&view_info, None)
                 }
             })
             .collect::<VkResult<Vec<vk::ImageView>>>()?;
