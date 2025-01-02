@@ -10,14 +10,16 @@ use color_eyre::Result;
 use std::sync::Arc;
 
 use core::config::RenderConfig;
-use core::context::RenderContext;
+use core::instance::RenderInstance;
 use core::resources::RenderResources;
 use core::state::RenderState;
 use core::target::RenderTarget;
+use crate::renderer::core::device::RenderDevice;
 
-pub struct Renderer {
-    ctx: RenderContext,
+pub struct Renderer<'a> {
+    ins: RenderInstance<'a>,
     tgt: Option<RenderTarget>,
+    dev: RenderDevice<'a>,
     cfg: RenderConfig,
     res: RenderResources,
     ste: RenderState,
@@ -27,14 +29,16 @@ impl Renderer {
     pub fn new(
         window: Option<Arc<winit::window::Window>>
     ) -> Result<Self> {
-        let (ctx, tgt) = RenderContext::new(window)?;
+        let (ins, tgt) = RenderInstance::new(window)?;
+        let dev = ins.create_device(tgt.as_ref())?;
         let cfg = RenderConfig::default();
-        let res = RenderResources::new(&ctx)?;
-        let ste = RenderState::new(&ctx)?;
+        let res = RenderResources::new(&dev)?;
+        let ste = RenderState::new()?;
 
         Ok(Self {
-            ctx,
+            ins,
             tgt,
+            dev,
             cfg,
             res,
             ste,

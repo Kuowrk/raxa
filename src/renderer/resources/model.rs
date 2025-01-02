@@ -4,6 +4,7 @@ use crate::renderer::core::resources::RenderResources;
 use crate::renderer::shader_data::PerVertexData;
 use color_eyre::eyre::{eyre, Result};
 use glam::Vec3;
+use crate::renderer::core::device::RenderDevice;
 
 pub struct FullscreenQuad {
     quad_model: Model,
@@ -83,7 +84,7 @@ pub struct Model {
 impl Model {
     pub fn new(
         meshes: Vec<Mesh>,
-        res: &RenderResources,
+        device: RenderDevice,
     ) -> Result<Self> {
         if meshes.is_empty() {
             return Err(eyre!("Model must have at least one mesh"));

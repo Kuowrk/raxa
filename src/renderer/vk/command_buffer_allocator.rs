@@ -11,10 +11,10 @@ pub struct CommandBufferAllocator<'a> {
     queue: &'a Queue,
 }
 
-impl CommandBufferAllocator<'_> {
+impl<'a> CommandBufferAllocator<'a> {
     pub fn new(
-        device: &ash::Device,
-        queue: &Queue,
+        device: &'a ash::Device,
+        queue: &'a Queue,
     ) -> Result<Self> {
         let command_pool_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue.family.index)

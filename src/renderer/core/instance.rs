@@ -6,23 +6,21 @@ use std::sync::Arc;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::Window;
 use crate::renderer::core::target::RenderTarget;
-use crate::renderer::vk::device::Device;
+use crate::renderer::core::device::RenderDevice;
 
-/// Contains Vulkan objects
-pub struct RenderContext<'a> {
-    pub instance: ash::Instance,
-    pub device: Arc<Device<'a>>,
-
+/// Initializes Vulkan and keeps the Vulkan instance alive
+pub struct RenderInstance<'a> {
     entry: ash::Entry,
+    instance: ash::Instance,
     debug_utils_messenger: vk::DebugUtilsMessengerEXT,
     debug_utils_loader: ash::ext::debug_utils::Instance,
 }
 
-impl RenderContext {
+impl RenderInstance {
     const ENABLE_VALIDATION_LAYERS: bool = cfg!(debug_assertions);
-    const REQUIRED_VALIDATION_LAYERS: &'static [&'static CStr] = &[
-        CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap(),
-    ];
+    const REQUIRED_VALIDATION_LAYERS: &'static [&'static CStr] = unsafe { &[
+        CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0")
+    ] };
 
     pub fn new(
         window: Option<Arc<Window>>,
@@ -46,15 +44,8 @@ impl RenderContext {
             (None, None)
         };
 
-        let device = Arc::new(Device::new(
-            &instance,
-            surface.as_ref(),
-            surface_loader.as_ref(),
-        )?);
-
         let ctx = Self {
             instance,
-            device,
             entry,
             debug_utils_messenger,
             debug_utils_loader,
@@ -75,6 +66,22 @@ impl RenderContext {
             ctx,
             tgt,
         ))
+    }
+
+    pub fn create_device(
+        &self,
+        tgt: Option<&RenderTarget>,
+    ) -> Result<RenderDevice> {
+        let (surface, surface_loader) = if let Some(tgt) = tgt {
+            (Some(&tgt.surface), Some(&tgt.surface_loader))
+        } else {
+            (None, None)
+        };
+        RenderDevice::new(
+            &self.instance,
+            surface,
+            surface_loader,
+        )
     }
 
     fn create_instance(
@@ -223,7 +230,9 @@ unsafe extern "system" fn debug_callback(
         vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION => "[Validation]",
         _ => "[Unknown]",
     };
-    let msg = CStr::from_ptr((*p_callback_data).p_message);
+    let msg = unsafe {
+        CStr::from_ptr((*p_callback_data).p_message)
+    };
     match message_severity {
         vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
             log::trace!("[Verbose]{} {:?}", msg_type, msg);

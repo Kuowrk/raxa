@@ -11,10 +11,10 @@ pub struct TransferContext<'a> {
     device: &'a ash::Device,
 }
 
-impl TransferContext<'_> {
+impl<'a> TransferContext<'a> {
     pub fn new(
-        transfer_queue: &Queue,
-        device: &ash::Device,
+        transfer_queue: &'a Queue,
+        device: &'a ash::Device,
     ) -> Result<Self> {
         let transfer_fence_info = vk::FenceCreateInfo::default();
         let transfer_fence =
@@ -71,10 +71,11 @@ impl TransferContext<'_> {
         }
 
         // Submit command buffer to the queue and execute it
+        let cmd = [cmd];
         let submit = vk::SubmitInfo::default()
             .wait_semaphores(&[])
             .wait_dst_stage_mask(&[])
-            .command_buffers(&[cmd])
+            .command_buffers(&cmd)
             .signal_semaphores(&[]);
         unsafe {
             self.device.queue_submit(

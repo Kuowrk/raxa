@@ -1,6 +1,8 @@
 use color_eyre::Result;
 use ash::vk;
-use crate::renderer::core::context::RenderContext;
+use crate::renderer::core::device::RenderDevice;
+use crate::renderer::core::instance::RenderInstance;
+use crate::renderer::vk::buffer::AllocatedBuffer;
 use crate::renderer::vk::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 
 const MAX_TEXTURES: u32 = 1024;
@@ -10,10 +12,12 @@ const MAX_OBJECTS: u32 = 1024;
 /// Contains all the resources that the renderer will use like materials, textures, and models
 pub struct RenderResources {
     pub bindless_descriptor_set_layout: vk::DescriptorSetLayout,
+    //pub vertex_buffer: AllocatedBuffer,
+    //pub index_buffer: AllocatedBuffer,
 }
 
 impl RenderResources {
-    pub fn new(ctx: &RenderContext) -> Result<Self> {
+    pub fn new(dev: &RenderDevice) -> Result<Self> {
         let bindless_descriptor_set_layout = DescriptorSetLayoutBuilder::new()
             // Per-frame uniform buffer
             .add_binding(
@@ -47,7 +51,7 @@ impl RenderResources {
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                 vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
             )
-            .build(&ctx.device.logical)?;
+            .build(&dev.logical)?;
 
         Ok(Self {
             bindless_descriptor_set_layout,

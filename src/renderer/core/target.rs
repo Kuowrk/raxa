@@ -1,11 +1,10 @@
 use std::sync::Arc;
-use ash::prelude::VkResult;
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use winit::window::Window;
-
-use crate::renderer::core::context::RenderContext;
+use crate::renderer::core::device::RenderDevice;
+use crate::renderer::vk::swapchain::Swapchain;
 
 /// Presentation target of the renderer, encapsulating the window, surface, and swapchain
 pub struct RenderTarget {
@@ -14,11 +13,9 @@ pub struct RenderTarget {
     pub surface: vk::SurfaceKHR,
     pub surface_loader: ash::khr::surface::Instance,
     pub surface_format: vk::SurfaceFormatKHR,
+    pub surface_present_mode: vk::PresentModeKHR,
 
-    pub swapchain: vk::SwapchainKHR,
-    pub swapchain_loader: ash::khr::swapchain::Device,
-    pub swapchain_images: Vec<vk::Image>,
-    pub swapchain_image_views: Vec<vk::ImageView>,
+    pub swapchain: Swapchain,
 }
 
 impl RenderTarget {
@@ -26,66 +23,16 @@ impl RenderTarget {
         window: Arc<Window>,
         surface: vk::SurfaceKHR,
         surface_loader: ash::khr::surface::Instance,
-        ctx: &RenderContext,
+        dev: &RenderDevice,
     ) -> Result<Self> {
-        let (
-            swapchain,
-            swapchain_loader,
-            surface_format,
-        ) = Self::create_swapchain(
-            &surface,
-            &surface_loader,
-            &window,
-            ctx,
-        )?;
-
-        let (
-            swapchain_images,
-            swapchain_image_views,
-        ) = Self::get_swapchain_images(
-            &swapchain,
-            &swapchain_loader,
-            &surface_format.format,
-            ctx,
-        )?;
-
-        Ok(Self {
-            window,
-            surface,
-            surface_loader,
-            surface_format,
-            swapchain,
-            swapchain_loader,
-            swapchain_images,
-            swapchain_image_views,
-        })
-    }
-
-    fn create_swapchain(
-        surface: &vk::SurfaceKHR,
-        surface_loader: &ash::khr::surface::Instance,
-        window: &Window,
-        ctx: &RenderContext,
-    ) -> Result<(
-        vk::SwapchainKHR,
-        ash::khr::swapchain::Device,
-        vk::SurfaceFormatKHR,
-    )> {
-        let physical_device = ctx.device.physical;
-
-        let surface_capabilities = unsafe {
-            surface_loader
-                .get_physical_device_surface_capabilities(physical_device, *surface)?
-        };
-
         let surface_formats = unsafe {
             surface_loader
-                .get_physical_device_surface_formats(physical_device, *surface)?
+                .get_physical_device_surface_formats(dev.physical, *surface)?
         };
 
         let surface_present_modes = unsafe {
             surface_loader
-                .get_physical_device_surface_present_modes(physical_device, *surface)?
+                .get_physical_device_surface_present_modes(dev.physical, *surface)?
         };
 
         let surface_format = surface_formats
@@ -96,120 +43,50 @@ impl RenderTarget {
             })
             .ok_or_eyre("No suitable surface format found")?;
 
-        let present_mode = surface_present_modes
+        let surface_present_mode = surface_present_modes
             .iter()
             .find(|mode| **mode == vk::PresentModeKHR::MAILBOX)
             .unwrap_or(&vk::PresentModeKHR::FIFO);
 
-        let image_extent = {
-            if surface_capabilities.current_extent.width != u32::MAX {
-                surface_capabilities.current_extent
-            } else {
-                let window_size = window.inner_size();
-                vk::Extent2D {
-                    width: window_size.width.clamp(
-                        surface_capabilities.min_image_extent.width,
-                        surface_capabilities.max_image_extent.width,
-                    ),
-                    height: window_size.height.clamp(
-                        surface_capabilities.min_image_extent.height,
-                        surface_capabilities.max_image_extent.height,
-                    ),
-                }
-            }
-        };
+        let swapchain = Swapchain::new(
+            &surface,
+            &surface_loader,
+            surface_format,
+            surface_present_mode,
+            &window,
+            dev,
+        )?;
 
-        let min_image_count = {
-            let min = surface_capabilities.min_image_count;
-            let max = surface_capabilities.max_image_count;
-            // Recommended to request at least one more image than the minimum
-            // to prevent having to wait on driver to complete internal operations
-            // before another image can be acquired
-            if max > 0 && min + 1 > max {
-                max
-            } else {
-                min + 1
-            }
-        };
-        let pre_transform = if surface_capabilities
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-        {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
-        } else {
-            surface_capabilities.current_transform
-        };
-
-        let swapchain_loader = ash::khr::swapchain::Device::new(
-            &ctx.instance, &ctx.device.logical);
-        let swapchain_info = vk::SwapchainCreateInfoKHR::default()
-            .surface(*surface)
-            .min_image_count(min_image_count)
-            .image_format(surface_format.format)
-            .image_color_space(surface_format.color_space)
-            .image_extent(image_extent)
-            .image_usage(
-                vk::ImageUsageFlags::COLOR_ATTACHMENT
-                    | vk::ImageUsageFlags::TRANSFER_DST
-            )
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .pre_transform(pre_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(*present_mode)
-            .clipped(true)
-            .image_array_layers(1);
-
-        let swapchain = unsafe {
-            swapchain_loader.create_swapchain(&swapchain_info, None)?
-        };
-
-        Ok((
+        Ok(Self {
+            window,
+            surface,
+            surface_loader,
+            surface_format: *surface_format,
+            surface_present_mode: *surface_present_mode,
             swapchain,
-            swapchain_loader,
-            *surface_format
-        ))
+        })
     }
 
-    fn get_swapchain_images(
-        swapchain: &vk::SwapchainKHR,
-        swapchain_loader: &ash::khr::swapchain::Device,
-        swapchain_image_format: &vk::Format,
-        ctx: &RenderContext,
-    ) -> Result<(Vec<vk::Image>, Vec<vk::ImageView>)> {
-        let swapchain_images = unsafe {
-            swapchain_loader.get_swapchain_images(*swapchain)?
-        };
-        let swapchain_image_views = swapchain_images
-            .iter()
-            .map(|image| {
-                let view_info = vk::ImageViewCreateInfo::default()
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(*swapchain_image_format)
-                    .components(vk::ComponentMapping {
-                        r: vk::ComponentSwizzle::R,
-                        g: vk::ComponentSwizzle::G,
-                        b: vk::ComponentSwizzle::B,
-                        a: vk::ComponentSwizzle::A,
-                    })
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    })
-                    .image(*image);
-                unsafe {
-                    ctx.device.logical.create_image_view(&view_info, None)
-                }
-            })
-            .collect::<VkResult<Vec<vk::ImageView>>>()?;
+    pub fn resize(
+        &mut self,
+        device: &RenderDevice,
+    ) -> Result<()> {
+        unsafe {
+            device.logical.device_wait_idle()?;
+        }
 
-        Ok((
-            swapchain_images,
-            swapchain_image_views,
-        ))
+        self.swapchain = Swapchain::new(
+            &self.surface,
+            &self.surface_loader,
+            &self.surface_format,
+            &self.surface_present_mode,
+            &self.window,
+            device,
+        )?;
+
+        Ok(())
     }
+
 
     /*
     pub fn resize(&mut self) -> Result<()> {
