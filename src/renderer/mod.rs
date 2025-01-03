@@ -4,7 +4,7 @@ pub mod util;
 mod core;
 mod shader_data;
 mod resources;
-mod vk;
+mod internals;
 
 use color_eyre::Result;
 use std::sync::Arc;

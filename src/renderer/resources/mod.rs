@@ -1,6 +1,5 @@
-// This module contains graphics-API-agnostic resources that are used by the renderer.
-// This does not mean that the implementations of these resources are agnostic,
-//   but rather that the public-facing fields and methods are agnostic.
+/// "Resources" refers to middle-level objects that created by "Core" objects.
+/// They are relatively intuitive and managed by the user.
 
 mod mesh;
 mod vertex;

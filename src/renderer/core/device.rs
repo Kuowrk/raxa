@@ -1,31 +1,32 @@
-use std::cell::RefCell;
 use std::ffi::{c_char, CStr};
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::DescriptorAllocator;
-use crate::renderer::vk::command_buffer_allocator::CommandBufferAllocator;
-use crate::renderer::vk::queue::{Queue, QueueFamily};
-use crate::renderer::vk::transfer_context::TransferContext;
+use crate::renderer::internals::buffer_allocator::BufferAllocator;
+use crate::renderer::internals::command_buffer_allocator::CommandBufferAllocator;
+use crate::renderer::internals::queue::{Queue, QueueFamily};
+use crate::renderer::internals::transfer_context::TransferContext;
 
+/// Main structure for the renderer that can create resources
 pub struct RenderDevice<'a> {
-    pub logical: ash::Device,
+    pub logical: Arc<ash::Device>,
     pub physical: vk::PhysicalDevice,
     pub instance: &'a ash::Instance,
 
     // For now, require the graphics queue to support presentation
-    pub graphics_queue: Queue,
-    pub compute_queue: Queue,
-    pub transfer_queue: Queue,
+    pub graphics_queue: Arc<Queue>,
+    pub compute_queue: Arc<Queue>,
+    pub transfer_queue: Arc<Queue>,
 
-    pub memory_allocator: Allocator,
-    pub command_buffer_allocator: CommandBufferAllocator<'a>,
-    pub descriptor_set_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>,
+    memory_allocator: Arc<Mutex<Allocator>>,
+    command_buffer_allocator: CommandBufferAllocator<'a>,
+    descriptor_set_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>,
 
-    transfer_context: TransferContext<'a>,
+    transfer_context: Arc<TransferContext<'a>>,
 }
 
 impl RenderDevice<'_> {
@@ -74,12 +75,16 @@ impl RenderDevice<'_> {
             allocation_sizes: Default::default(),
         })?;
 
+        let graphics_queue = Arc::new(graphics_queue);
+        let compute_queue = Arc::new(compute_queue);
+        let transfer_queue = Arc::new(transfer_queue);
+
         let command_buffer_allocator = CommandBufferAllocator::new(
             &logical_device,
             &graphics_queue,
         )?;
 
-        let descriptor_set_allocator = DescriptorAllocator::new(1024)?;
+        let descriptor_set_allocator = DescriptorAllocator::new(1024);
 
         let transfer_context = TransferContext::new(
             &transfer_queue,
@@ -87,7 +92,7 @@ impl RenderDevice<'_> {
         )?;
 
         Ok(Self {
-            logical: logical_device,
+            logical: Arc::new(logical_device),
             physical: physical_device,
 
             instance,
@@ -95,10 +100,11 @@ impl RenderDevice<'_> {
             compute_queue,
             transfer_queue,
 
-            memory_allocator,
+            memory_allocator: Arc::new(Mutex::new(memory_allocator)),
             command_buffer_allocator,
             descriptor_set_allocator,
-            transfer_context,
+
+            transfer_context: Arc::new(transfer_context),
         })
     }
 
@@ -110,6 +116,24 @@ impl RenderDevice<'_> {
         F: FnOnce(vk::CommandBuffer, &ash::Device) -> Result<()>,
     {
         self.transfer_context.immediate_submit(func)
+    }
+
+    pub fn create_buffer_allocator(
+        &self,
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        mem_loc: gpu_allocator::MemoryLocation,
+        alignment: u64,
+    ) -> Result<BufferAllocator> {
+        BufferAllocator::new(
+            size,
+            usage,
+            mem_loc,
+            alignment,
+            self.memory_allocator.clone(),
+            self.logical.clone(),
+            self.transfer_context.clone(),
+        )
     }
 
     fn select_physical_device(

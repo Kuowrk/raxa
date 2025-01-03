@@ -1,6 +1,6 @@
 use ash::vk;
 use color_eyre::Result;
-use crate::renderer::vk::queue::Queue;
+use crate::renderer::internals::queue::Queue;
 
 /// Each CommandBufferAllocator is associated with a single queue
 pub struct CommandBufferAllocator<'a> {

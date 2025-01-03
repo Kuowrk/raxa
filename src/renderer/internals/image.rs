@@ -1,13 +1,14 @@
 use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::Result;
+use color_eyre::eyre::eyre;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
 };
-use crate::renderer::vk::buffer::AllocatedBuffer;
-use crate::renderer::vk::transfer_context::TransferContext;
-use crate::renderer::vk::util;
+use crate::renderer::internals::buffer::Buffer;
+use crate::renderer::internals::transfer_context::TransferContext;
+use crate::renderer::internals::util;
 
 struct AllocatedImageCreateInfo {
     pub format: vk::Format,
@@ -52,13 +53,16 @@ impl AllocatedImage {
             unsafe { device.create_image(&info, None)? }
         };
         let reqs = unsafe { device.get_image_memory_requirements(image) };
-        let allocation = memory_allocator.lock()?.allocate(&AllocationCreateDesc {
-            name: &create_info.name,
-            requirements: reqs,
-            location: MemoryLocation::GpuOnly,
-            linear: false,
-            allocation_scheme: AllocationScheme::DedicatedImage(image),
-        })?;
+        let allocation = memory_allocator
+            .lock()
+            .map_err(|e| eyre!(e.to_string()))?
+            .allocate(&AllocationCreateDesc {
+                name: &create_info.name,
+                requirements: reqs,
+                location: MemoryLocation::GpuOnly,
+                linear: false,
+                allocation_scheme: AllocationScheme::DedicatedImage(image),
+            })?;
         unsafe {
             device.bind_image_memory(image, allocation.memory(), 0)?;
         }
@@ -224,7 +228,7 @@ impl AllocatedImage {
         data: &[u8],
         transfer_context: &TransferContext,
     ) -> Result<()> {
-        let mut staging_buffer = AllocatedBuffer::new(
+        let mut staging_buffer = Buffer::new(
             data.len() as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
             "Image staging buffer",

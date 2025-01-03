@@ -1,6 +1,6 @@
 use ash::vk;
 use color_eyre::eyre::Result;
-use crate::renderer::vk::queue::Queue;
+use crate::renderer::internals::queue::Queue;
 
 pub struct TransferContext<'a> {
     transfer_fence: vk::Fence,

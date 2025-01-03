@@ -1,12 +1,13 @@
 use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::Result;
+use color_eyre::eyre::eyre;
 use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
 };
 
-pub struct AllocatedBuffer {
+pub struct Buffer {
     pub buffer: vk::Buffer,
     pub size: u64,
 
@@ -15,34 +16,37 @@ pub struct AllocatedBuffer {
     device: Arc<ash::Device>,
 }
 
-impl AllocatedBuffer {
+impl Buffer {
     pub fn new(
-        buffer_size: u64,
-        buffer_usage: vk::BufferUsageFlags,
-        alloc_name: &str,
-        alloc_loc: MemoryLocation,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        name: &str,
+        mem_loc: MemoryLocation,
+        mem_allocator: Arc<Mutex<Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
         let buffer = {
             let buffer_info = vk::BufferCreateInfo {
-                size: buffer_size,
-                usage: buffer_usage,
+                size,
+                usage,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
             };
             unsafe { device.create_buffer(&buffer_info, None)? }
         };
 
-        let reqs = unsafe { device.get_buffer_memory_requirements(buffer) };
-        let allocation = memory_allocator
-            .lock()?
+        let requirements = unsafe {
+            device.get_buffer_memory_requirements(buffer)
+        };
+        let allocation = mem_allocator
+            .lock()
+            .map_err(|e| eyre!(e.to_string()))?
             .allocate(&AllocationCreateDesc {
-                name: alloc_name,
-                requirements: reqs,
-                location: alloc_loc,
+                name,
+                requirements,
+                location: mem_loc,
                 linear: true,
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                allocation_scheme: AllocationScheme::DedicatedBuffer(buffer)
             })?;
 
         unsafe {
@@ -55,7 +59,7 @@ impl AllocatedBuffer {
 
         Ok(Self {
             buffer,
-            size: buffer_size,
+            size,
 
             allocation: Some(allocation),
             memory_allocator,
@@ -79,7 +83,7 @@ impl AllocatedBuffer {
     }
 }
 
-impl Drop for AllocatedBuffer {
+impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
             self.memory_allocator
