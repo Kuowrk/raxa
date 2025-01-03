@@ -8,22 +8,22 @@ use crate::renderer::internals::buffer::Buffer;
 use crate::renderer::internals::transfer_context::TransferContext;
 
 #[derive(PartialEq, Copy, Clone)]
-pub struct BufferRegion {
+pub struct MegabufferRegion {
     offset: u64,
     size: u64,
 }
 
-pub struct BufferAllocator<'a> {
+pub struct Megabuffer<'a> {
     buffer: Buffer,
     staging_buffer: Buffer,
-    free_regions: Vec<BufferRegion>,
+    free_regions: Vec<MegabufferRegion>,
     mem_loc: MemoryLocation,
     alignment: u64,
 
     transfer_context: Arc<TransferContext<'a>>,
 }
 
-impl BufferAllocator {
+impl Megabuffer {
     pub fn new(
         size: u64,
         usage: vk::BufferUsageFlags,
@@ -54,7 +54,7 @@ impl BufferAllocator {
         Ok(Self {
             buffer,
             staging_buffer,
-            free_regions: vec![BufferRegion {
+            free_regions: vec![MegabufferRegion {
                 offset: 0,
                 size,
             }],
@@ -65,11 +65,11 @@ impl BufferAllocator {
         })
     }
 
-    pub fn allocate(&mut self, size: u64) -> Option<BufferRegion> {
+    pub fn allocate(&mut self, size: u64) -> Option<MegabufferRegion> {
         let aligned_size = (size + self.alignment - 1) & !(self.alignment - 1);
         for (i, region) in self.free_regions.iter_mut().enumerate() {
             if region.size >= aligned_size {
-                let allocated_region = BufferRegion {
+                let allocated_region = MegabufferRegion {
                     offset: region.offset,
                     size: aligned_size,
                 };
@@ -87,7 +87,7 @@ impl BufferAllocator {
         None // No free region large enough
     }
 
-    pub fn deallocate(&mut self, region: BufferRegion) {
+    pub fn deallocate(&mut self, region: MegabufferRegion) {
         let mut left_index = None; // Some if there is a free region to the left of the deallocated region
         let mut right_index = None; // Some if there is a free region to the right of the deallocated region
 
@@ -133,7 +133,7 @@ impl BufferAllocator {
         }
     }
 
-    pub fn update_buffer(&self) -> Result<()> {
+    pub fn upload(&self) -> Result<()> {
         self.transfer_context.immediate_submit(
             |cmd: vk::CommandBuffer, device: &ash::Device| {
                 let copy_regions = self.free_regions.iter().map(|region| {
@@ -160,10 +160,10 @@ impl BufferAllocator {
         Ok(())
     }
 
-    pub fn write_buffer<T>(
+    pub fn write<T>(
         &mut self,
         data: &[T],
-        region: &BufferRegion,
+        region: &MegabufferRegion,
     ) -> Result<presser::CopyRecord>
     where
         T: Copy,

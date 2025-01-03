@@ -1,7 +1,7 @@
 use super::mesh::Mesh;
 use super::vertex::Vertex;
 use crate::renderer::core::target::RenderTarget;
-use crate::renderer::internals::buffer_allocator::{BufferAllocator, BufferRegion};
+use crate::renderer::internals::megabuffer::{Megabuffer, MegabufferRegion};
 use crate::renderer::shader_data::PerVertexData;
 use color_eyre::eyre::{eyre, OptionExt, Result};
 use glam::Vec3;
@@ -15,15 +15,15 @@ pub struct FullscreenQuad {
 
 impl FullscreenQuad {
     pub fn new(
-        vertex_buffer_allocator: &mut BufferAllocator,
-        index_buffer_allocator: &mut BufferAllocator,
+        vertex_megabuffer: &mut Megabuffer,
+        index_megabuffer: &mut Megabuffer,
         tgt: &RenderTarget,
     ) -> Result<Self> {
         let quad_mesh = Mesh::new_quad();
         let quad_model = Model::new(
             vec![quad_mesh],
-            vertex_buffer_allocator,
-            index_buffer_allocator,
+            vertex_megabuffer,
+            index_megabuffer,
         )?;
         let mut quad = Self {
             quad_model,
@@ -31,14 +31,14 @@ impl FullscreenQuad {
             image_width: 1.0,
             image_height: 1.0,
         };
-        quad.resize_to_target(tgt, vertex_buffer_allocator)?;
+        quad.resize_to_target(tgt, vertex_megabuffer)?;
         Ok(quad)
     }
 
     pub fn resize_to_target(
         &mut self,
         tgt: &RenderTarget,
-        vertex_buffer_allocator: &mut BufferAllocator,
+        vertex_megabuffer: &mut Megabuffer,
     ) -> Result<()> {
         // Correct for image aspect ratio
         let mut x = if self.image_width >= self.image_height {
@@ -74,7 +74,7 @@ impl FullscreenQuad {
                 vertex
             })
             .collect::<Vec<PerVertexData>>();
-        self.quad_model.write_vertex_buffer(vertices_merged, vertex_buffer_allocator)?;
+        self.quad_model.write_vertex_buffer(vertices_merged, vertex_megabuffer)?;
 
         Ok(())
     }
@@ -82,15 +82,15 @@ impl FullscreenQuad {
 
 pub struct Model {
     meshes: Vec<Mesh>,
-    vertex_buffer_region: BufferRegion,
-    index_buffer_region: Option<BufferRegion>,
+    vertex_megabuffer_region: MegabufferRegion,
+    index_megabuffer_region: Option<MegabufferRegion>,
 }
 
 impl Model {
     pub fn new(
         meshes: Vec<Mesh>,
-        vertex_buffer_allocator: &mut BufferAllocator,
-        index_buffer_allocator: &mut BufferAllocator,
+        vertex_megabuffer: &mut Megabuffer,
+        index_megabuffer: &mut Megabuffer,
     ) -> Result<Self> {
         if meshes.is_empty() {
             return Err(eyre!("Model must have at least one mesh"));
@@ -116,10 +116,10 @@ impl Model {
 
         // Upload all vertices to the vertex buffer
         let vertex_buffer_region_size = (vertices.len() * size_of::<PerVertexData>()) as u64;
-        let vertex_buffer_region = vertex_buffer_allocator
+        let vertex_buffer_region = vertex_megabuffer
             .allocate(vertex_buffer_region_size)
             .ok_or_eyre("Failed to allocate vertex buffer region")?;
-        vertex_buffer_allocator.write_buffer(&vertices, &vertex_buffer_region)?;
+        vertex_megabuffer.write(&vertices, &vertex_buffer_region)?;
 
         // Upload all indices to the index buffer if the model has indices
         let index_buffer_region = if has_indices {
@@ -130,10 +130,10 @@ impl Model {
                 .collect::<Vec<u32>>();
 
             let index_buffer_region_size = (indices.len() * size_of::<u32>()) as u64;
-            let index_buffer_region = index_buffer_allocator
+            let index_buffer_region = index_megabuffer
                 .allocate(index_buffer_region_size)
                 .ok_or_eyre("Failed to allocate index buffer region")?;
-            index_buffer_allocator.write_buffer(&indices, &index_buffer_region)?;
+            index_megabuffer.write(&indices, &index_buffer_region)?;
 
             Some(index_buffer_region)
         } else {
@@ -142,21 +142,21 @@ impl Model {
 
         Ok(Self {
             meshes,
-            vertex_buffer_region,
-            index_buffer_region,
+            vertex_megabuffer_region: vertex_buffer_region,
+            index_megabuffer_region: index_buffer_region,
         })
     }
 
     pub fn write_vertex_buffer(
         &mut self,
         vertices: Vec<PerVertexData>,
-        vertex_buffer_allocator: &mut BufferAllocator,
+        vertex_buffer_allocator: &mut Megabuffer,
     ) -> Result<()> {
-        vertex_buffer_allocator.deallocate(self.vertex_buffer_region);
-        self.vertex_buffer_region = vertex_buffer_allocator
+        vertex_buffer_allocator.deallocate(self.vertex_megabuffer_region);
+        self.vertex_megabuffer_region = vertex_buffer_allocator
             .allocate((vertices.len() * size_of::<PerVertexData>()) as u64)
             .ok_or_eyre("Failed to allocate vertex buffer region")?;
-        vertex_buffer_allocator.write_buffer(&vertices, &self.vertex_buffer_region)?;
+        vertex_buffer_allocator.write(&vertices, &self.vertex_megabuffer_region)?;
         Ok(())
     }
 
@@ -168,7 +168,7 @@ impl Model {
     }
 
     pub fn get_indices_merged(&self) -> Option<Vec<&u32>> {
-        if self.index_buffer_region.is_some() {
+        if self.index_megabuffer_region.is_some() {
             Some(self.meshes
                 .iter()
                 .flat_map(|m| m.indices.as_ref().unwrap().iter())

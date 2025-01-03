@@ -1,7 +1,7 @@
 use color_eyre::Result;
 use ash::vk;
 use crate::renderer::core::device::RenderDevice;
-use crate::renderer::internals::buffer_allocator::BufferAllocator;
+use crate::renderer::internals::megabuffer::Megabuffer;
 use crate::renderer::internals::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * 256; // 256 MB
@@ -17,8 +17,8 @@ const MAX_OBJECTS: u32 = 1024;
 /// Contains all the resources that the renderer will use like materials, textures, and models
 pub struct RenderResources<'a> {
     pub bindless_descriptor_set_layout: vk::DescriptorSetLayout,
-    pub vertex_buffer_allocator: BufferAllocator<'a>,
-    pub index_buffer_allocator: BufferAllocator<'a>,
+    pub vertex_megabuffer: Megabuffer<'a>,
+    pub index_megabuffer: Megabuffer<'a>,
 }
 
 impl RenderResources {
@@ -58,27 +58,27 @@ impl RenderResources {
             )
             .build(&dev.logical)?;
 
-        let vertex_buffer_allocator = dev.create_buffer_allocator(
+        let vertex_megabuffer = dev.create_megabuffer(
             VERTEX_BUFFER_SIZE,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             gpu_allocator::MemoryLocation::GpuOnly,
             VERTEX_BUFFER_ALIGNMENT,
         )?;
 
-        let index_buffer_allocator = dev.create_buffer_allocator(
+        let index_megabuffer = dev.create_megabuffer(
             INDEX_BUFFER_SIZE,
             vk::BufferUsageFlags::INDEX_BUFFER,
             gpu_allocator::MemoryLocation::GpuOnly,
             INDEX_BUFFER_ALIGNMENT,
         )?;
 
-        vertex_buffer_allocator.update_buffer()?;
-        index_buffer_allocator.update_buffer()?;
+        vertex_megabuffer.upload()?;
+        index_megabuffer.upload()?;
 
         Ok(Self {
             bindless_descriptor_set_layout,
-            vertex_buffer_allocator,
-            index_buffer_allocator,
+            vertex_megabuffer,
+            index_megabuffer,
         })
     }
 

@@ -6,7 +6,7 @@ use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::DescriptorAllocator;
-use crate::renderer::internals::buffer_allocator::BufferAllocator;
+use crate::renderer::internals::megabuffer::Megabuffer;
 use crate::renderer::internals::command_buffer_allocator::CommandBufferAllocator;
 use crate::renderer::internals::queue::{Queue, QueueFamily};
 use crate::renderer::internals::transfer_context::TransferContext;
@@ -118,14 +118,14 @@ impl RenderDevice<'_> {
         self.transfer_context.immediate_submit(func)
     }
 
-    pub fn create_buffer_allocator(
+    pub fn create_megabuffer(
         &self,
         size: u64,
         usage: vk::BufferUsageFlags,
         mem_loc: gpu_allocator::MemoryLocation,
         alignment: u64,
-    ) -> Result<BufferAllocator> {
-        BufferAllocator::new(
+    ) -> Result<Megabuffer> {
+        Megabuffer::new(
             size,
             usage,
             mem_loc,

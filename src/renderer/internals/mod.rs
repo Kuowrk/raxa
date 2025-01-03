@@ -8,4 +8,4 @@ pub mod util;
 pub mod command_buffer_allocator;
 pub mod queue;
 pub mod swapchain;
-pub mod buffer_allocator;
+pub mod megabuffer;
