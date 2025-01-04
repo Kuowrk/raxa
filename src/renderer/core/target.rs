@@ -27,12 +27,12 @@ impl RenderTarget {
     ) -> Result<Self> {
         let surface_formats = unsafe {
             surface_loader
-                .get_physical_device_surface_formats(dev.physical, *surface)?
+                .get_physical_device_surface_formats(dev.physical, surface)?
         };
 
         let surface_present_modes = unsafe {
             surface_loader
-                .get_physical_device_surface_present_modes(dev.physical, *surface)?
+                .get_physical_device_surface_present_modes(dev.physical, surface)?
         };
 
         let surface_format = surface_formats

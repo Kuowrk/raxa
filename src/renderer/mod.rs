@@ -21,7 +21,7 @@ pub struct Renderer<'a> {
     tgt: Option<RenderTarget>,
     dev: RenderDevice<'a>,
     cfg: RenderConfig,
-    res: RenderResources,
+    res: RenderResources<'a>,
     ste: RenderState,
 }
 

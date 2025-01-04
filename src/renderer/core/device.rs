@@ -75,6 +75,7 @@ impl RenderDevice<'_> {
             allocation_sizes: Default::default(),
         })?;
 
+        let logical_device = Arc::new(logical_device);
         let graphics_queue = Arc::new(graphics_queue);
         let compute_queue = Arc::new(compute_queue);
         let transfer_queue = Arc::new(transfer_queue);
@@ -87,12 +88,12 @@ impl RenderDevice<'_> {
         let descriptor_set_allocator = DescriptorAllocator::new(1024);
 
         let transfer_context = TransferContext::new(
-            &transfer_queue,
-            &logical_device,
+            transfer_queue.clone(),
+            logical_device.clone(),
         )?;
 
         Ok(Self {
-            logical: Arc::new(logical_device),
+            logical,
             physical: physical_device,
 
             instance,
@@ -124,7 +125,7 @@ impl RenderDevice<'_> {
         usage: vk::BufferUsageFlags,
         mem_loc: gpu_allocator::MemoryLocation,
         alignment: u64,
-    ) -> Result<Megabuffer> {
+    ) -> Result<Arc<Mutex<Megabuffer>>> {
         Megabuffer::new(
             size,
             usage,

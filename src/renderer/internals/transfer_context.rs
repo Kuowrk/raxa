@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use ash::vk;
 use color_eyre::eyre::Result;
 use crate::renderer::internals::queue::Queue;
@@ -7,14 +8,14 @@ pub struct TransferContext<'a> {
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
 
-    transfer_queue: &'a Queue,
-    device: &'a ash::Device,
+    transfer_queue: Arc<Queue>,
+    device: Arc<ash::Device>,
 }
 
 impl<'a> TransferContext<'a> {
     pub fn new(
-        transfer_queue: &'a Queue,
-        device: &'a ash::Device,
+        transfer_queue: Arc<Queue>,
+        device: Arc<ash::Device>,
     ) -> Result<Self> {
         let transfer_fence_info = vk::FenceCreateInfo::default();
         let transfer_fence =

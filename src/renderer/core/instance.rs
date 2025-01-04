@@ -189,7 +189,7 @@ impl RenderInstance {
                 .map(|props| {
                     props.layer_name_as_c_str()
                 })
-                .collect::<Result<Vec<_>>>()?
+                .collect::<Result<Vec<&CStr>>>()?
         };
 
         for layer in Self::REQUIRED_VALIDATION_LAYERS {
