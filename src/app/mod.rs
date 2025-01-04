@@ -14,9 +14,9 @@ use crate::app::camera_controller::CameraController;
 use crate::app::input_state::InputState;
 use crate::renderer::camera::Camera;
 
-pub struct App<'a> {
+pub struct App {
     window: Option<Arc<Window>>,
-    renderer: Option<Renderer<'a>>,
+    renderer: Option<Renderer>,
     event_loop: EventLoop<()>,
     camera_controller: CameraController,
 
@@ -28,7 +28,7 @@ pub struct App<'a> {
     close_requested: bool,
 }
 
-impl App<'_> {
+impl App {
     pub fn new() -> Result<Self> {
         let event_loop = EventLoop::new()?;
         let camera = Camera::new();
@@ -49,7 +49,7 @@ impl App<'_> {
     }
 }
 
-impl ApplicationHandler for App<'_> {
+impl ApplicationHandler for App {
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {
         let curr_frame_time = Instant::now();
         self.delta_time_secs = curr_frame_time.duration_since(self.prev_frame_time).as_secs_f32();

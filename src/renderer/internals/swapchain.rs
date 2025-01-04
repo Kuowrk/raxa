@@ -3,6 +3,7 @@ use ash::vk;
 use color_eyre::Result;
 use winit::window::Window;
 use crate::renderer::core::device::RenderDevice;
+use crate::renderer::core::instance::RenderInstance;
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -25,6 +26,7 @@ impl Swapchain {
         surface_format: &vk::SurfaceFormatKHR,
         surface_present_mode: &vk::PresentModeKHR,
         window: &Window,
+        ins: &RenderInstance,
         dev: &RenderDevice,
     ) -> Result<Self> {
         let surface_capabilities = unsafe {
@@ -75,7 +77,8 @@ impl Swapchain {
         let image_sharing_mode = vk::SharingMode::EXCLUSIVE;
 
         let swapchain_loader = ash::khr::swapchain::Device::new(
-            &dev.instance, &dev.logical
+            &ins.instance,
+            &dev.logical,
         );
         let swapchain_info = vk::SwapchainCreateInfoKHR::default()
             .surface(*surface)

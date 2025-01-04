@@ -81,6 +81,7 @@ impl RenderInstance {
         RenderTarget::new(
             window,
             surface,
+            self,
             dev,
         )
     }

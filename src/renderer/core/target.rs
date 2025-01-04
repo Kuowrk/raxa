@@ -5,6 +5,7 @@ use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use std::sync::Arc;
 use winit::window::Window;
+use crate::renderer::core::instance::RenderInstance;
 
 /// Presentation target of the renderer, encapsulating the window, surface, and swapchain
 pub struct RenderTarget {
@@ -22,6 +23,7 @@ impl RenderTarget {
     pub fn new(
         window: Arc<Window>,
         surface: (vk::SurfaceKHR, ash::khr::surface::Instance),
+        ins: &RenderInstance,
         dev: &RenderDevice,
     ) -> Result<Self> {
         let surface_loader = surface.1;
@@ -56,6 +58,7 @@ impl RenderTarget {
             surface_format,
             surface_present_mode,
             &window,
+            ins,
             dev,
         )?;
 
@@ -71,10 +74,11 @@ impl RenderTarget {
 
     pub fn resize(
         &mut self,
-        device: &RenderDevice,
+        ins: &RenderInstance,
+        dev: &RenderDevice,
     ) -> Result<()> {
         unsafe {
-            device.logical.device_wait_idle()?;
+            dev.logical.device_wait_idle()?;
         }
 
         self.swapchain = Swapchain::new(
@@ -83,7 +87,8 @@ impl RenderTarget {
             &self.surface_format,
             &self.surface_present_mode,
             &self.window,
-            device,
+            ins,
+            dev,
         )?;
 
         Ok(())

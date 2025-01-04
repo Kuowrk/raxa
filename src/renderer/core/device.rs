@@ -13,10 +13,9 @@ use crate::renderer::internals::queue::{Queue, QueueFamily};
 use crate::renderer::internals::transfer_context::TransferContext;
 
 /// Main structure for the renderer that can create resources
-pub struct RenderDevice<'a> {
+pub struct RenderDevice {
     pub logical: Arc<ash::Device>,
     pub physical: vk::PhysicalDevice,
-    pub instance: &'a RenderInstance,
 
     // For now, require the graphics queue to support presentation
     pub graphics_queue: Arc<Queue>,
@@ -30,9 +29,9 @@ pub struct RenderDevice<'a> {
     transfer_context: Arc<TransferContext>,
 }
 
-impl<'a> RenderDevice<'a> {
+impl RenderDevice {
     pub fn new(
-        instance: &'a RenderInstance,
+        instance: &RenderInstance,
         surface: Option<&(vk::SurfaceKHR, ash::khr::surface::Instance)>,
     ) -> Result<Self> {
         let (
@@ -51,7 +50,7 @@ impl<'a> RenderDevice<'a> {
             compute_queue,
             transfer_queue,
         ) = Self::create_logical_device(
-            instance,
+            &instance.instance,
             &physical_device,
             graphics_queue_family,
             compute_queue_family,
@@ -95,7 +94,6 @@ impl<'a> RenderDevice<'a> {
             logical: logical_device,
             physical: physical_device,
 
-            instance,
             graphics_queue,
             compute_queue,
             transfer_queue,

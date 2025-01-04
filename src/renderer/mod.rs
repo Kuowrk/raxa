@@ -15,16 +15,16 @@ use core::state::RenderState;
 use core::target::RenderTarget;
 use crate::renderer::core::device::RenderDevice;
 
-pub struct Renderer<'a> {
+pub struct Renderer {
     ins: RenderInstance,
     tgt: Option<RenderTarget>,
-    dev: RenderDevice<'a>,
+    dev: RenderDevice,
     cfg: RenderConfig,
     res: RenderResources,
     ste: RenderState,
 }
 
-impl Renderer<'_> {
+impl Renderer {
     pub fn new(
         window: Option<Arc<winit::window::Window>>
     ) -> Result<Self> {
