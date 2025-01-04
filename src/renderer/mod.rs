@@ -8,7 +8,6 @@ mod internals;
 
 use color_eyre::Result;
 use std::sync::Arc;
-
 use core::config::RenderConfig;
 use core::instance::RenderInstance;
 use core::resources::RenderResources;
@@ -17,20 +16,30 @@ use core::target::RenderTarget;
 use crate::renderer::core::device::RenderDevice;
 
 pub struct Renderer<'a> {
-    ins: RenderInstance<'a>,
+    ins: RenderInstance,
     tgt: Option<RenderTarget>,
     dev: RenderDevice<'a>,
     cfg: RenderConfig,
-    res: RenderResources<'a>,
+    res: RenderResources,
     ste: RenderState,
 }
 
-impl Renderer {
+impl Renderer<'_> {
     pub fn new(
         window: Option<Arc<winit::window::Window>>
     ) -> Result<Self> {
-        let (ins, tgt) = RenderInstance::new(window)?;
-        let dev = ins.create_device(tgt.as_ref())?;
+        let ins = RenderInstance::new(window.clone())?;
+        let surface = if let Some(window) = window.as_ref() {
+            Some(ins.create_surface(window)?)
+        } else {
+            None
+        };
+        let dev = ins.create_device(surface.as_ref())?;
+        let tgt = if let Some(window) = window {
+            Some(ins.create_target(window, surface.unwrap(), &dev)?)
+        } else {
+            None
+        };
         let cfg = RenderConfig::default();
         let res = RenderResources::new(&dev)?;
         let ste = RenderState::new()?;

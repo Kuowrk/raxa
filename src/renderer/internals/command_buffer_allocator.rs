@@ -1,20 +1,21 @@
+use std::sync::Arc;
 use ash::vk;
 use color_eyre::Result;
 use crate::renderer::internals::queue::Queue;
 
 /// Each CommandBufferAllocator is associated with a single queue
-pub struct CommandBufferAllocator<'a> {
+pub struct CommandBufferAllocator {
     command_pool: vk::CommandPool,
     command_buffers: Vec<vk::CommandBuffer>,
 
-    device: &'a ash::Device,
-    queue: &'a Queue,
+    device: Arc<ash::Device>,
+    queue: Arc<Queue>,
 }
 
-impl<'a> CommandBufferAllocator<'a> {
+impl CommandBufferAllocator {
     pub fn new(
-        device: &'a ash::Device,
-        queue: &'a Queue,
+        device: Arc<ash::Device>,
+        queue: Arc<Queue>,
     ) -> Result<Self> {
         let command_pool_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(queue.family.index)
@@ -45,7 +46,7 @@ impl<'a> CommandBufferAllocator<'a> {
     }
 }
 
-impl Drop for CommandBufferAllocator<'_> {
+impl Drop for CommandBufferAllocator {
     fn drop(&mut self) {
         unsafe {
             self.device.free_command_buffers(self.command_pool, &self.command_buffers);

@@ -1,14 +1,14 @@
-use std::sync::{Arc, Mutex};
 use super::mesh::Mesh;
 use super::vertex::Vertex;
 use crate::renderer::core::target::RenderTarget;
-use crate::renderer::internals::megabuffer::{AllocatedMegabufferRegion, Megabuffer};
+use crate::renderer::internals::megabuffer::{AllocatedMegabufferRegion, Megabuffer, MegabufferExt};
 use crate::renderer::shader_data::PerVertexData;
-use color_eyre::eyre::{eyre, OptionExt, Result};
+use color_eyre::eyre::{eyre, Result};
 use glam::Vec3;
+use std::sync::{Arc, Mutex};
 
-pub struct FullscreenQuad<'a> {
-    quad_model: Model<'a>,
+pub struct FullscreenQuad {
+    quad_model: Model,
     // Image width and height determine the aspect ratio of an image to be displayed on the quad
     image_width: f32,
     image_height: f32,
@@ -16,8 +16,8 @@ pub struct FullscreenQuad<'a> {
 
 impl FullscreenQuad {
     pub fn new(
-        vertex_megabuffer: &mut Megabuffer,
-        index_megabuffer: &mut Megabuffer,
+        vertex_megabuffer: &mut Arc<Mutex<Megabuffer>>,
+        index_megabuffer: &mut Arc<Mutex<Megabuffer>>,
         tgt: &RenderTarget,
     ) -> Result<Self> {
         let quad_mesh = Mesh::new_quad();
@@ -39,7 +39,7 @@ impl FullscreenQuad {
     pub fn resize_to_target(
         &mut self,
         tgt: &RenderTarget,
-        vertex_megabuffer: &mut Megabuffer,
+        vertex_megabuffer: &mut Arc<Mutex<Megabuffer>>,
     ) -> Result<()> {
         // Correct for image aspect ratio
         let mut x = if self.image_width >= self.image_height {
@@ -81,17 +81,17 @@ impl FullscreenQuad {
     }
 }
 
-pub struct Model<'a> {
+pub struct Model {
     meshes: Vec<Mesh>,
-    vertex_megabuffer_region: Option<AllocatedMegabufferRegion<'a>>,
-    index_megabuffer_region: Option<AllocatedMegabufferRegion<'a>>,
+    vertex_megabuffer_region: Option<AllocatedMegabufferRegion>,
+    index_megabuffer_region: Option<AllocatedMegabufferRegion>,
 }
 
 impl Model {
     pub fn new(
         meshes: Vec<Mesh>,
-        vertex_megabuffer: &mut Megabuffer,
-        index_megabuffer: &mut Megabuffer,
+        vertex_megabuffer: &mut Arc<Mutex<Megabuffer>>,
+        index_megabuffer: &mut Arc<Mutex<Megabuffer>>,
     ) -> Result<Self> {
         if meshes.is_empty() {
             return Err(eyre!("Model must have at least one mesh"));
@@ -118,7 +118,7 @@ impl Model {
         // Upload all vertices to the vertex buffer
         let vertex_buffer_region_size = (vertices.len() * size_of::<PerVertexData>()) as u64;
         let vertex_buffer_region = vertex_megabuffer
-            .allocate(vertex_buffer_region_size)?;
+            .allocate_region(vertex_buffer_region_size)?;
         vertex_megabuffer.write(&vertices, &vertex_buffer_region)?;
 
         // Upload all indices to the index buffer if the model has indices
@@ -131,7 +131,7 @@ impl Model {
 
             let index_buffer_region_size = (indices.len() * size_of::<u32>()) as u64;
             let index_buffer_region = index_megabuffer
-                .allocate(index_buffer_region_size)?;
+                .allocate_region(index_buffer_region_size)?;
             index_megabuffer.write(&indices, &index_buffer_region)?;
 
             Some(index_buffer_region)
@@ -155,7 +155,7 @@ impl Model {
             return Err(eyre!("Model does not have a vertex buffer region"));
         }
 
-        vertex_megabuffer.deallocate_region(self.vertex_megabuffer_region.take().unwrap());
+        vertex_megabuffer.deallocate_region(self.vertex_megabuffer_region.take().unwrap())?;
 
         let mut vertex_megabuffer_region = vertex_megabuffer
             .allocate_region((vertices.len() * size_of::<PerVertexData>()) as u64)?;

@@ -62,7 +62,7 @@ impl Buffer {
             size,
 
             allocation: Some(allocation),
-            memory_allocator,
+            memory_allocator: mem_allocator,
             device,
         })
     }

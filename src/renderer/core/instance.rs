@@ -1,4 +1,4 @@
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{c_char, c_void, CStr, FromBytesUntilNulError};
 use ash::vk;
 use color_eyre::eyre::eyre;
 use color_eyre::Result;
@@ -9,11 +9,11 @@ use crate::renderer::core::target::RenderTarget;
 use crate::renderer::core::device::RenderDevice;
 
 /// Initializes Vulkan and keeps the Vulkan instance alive
-pub struct RenderInstance<'a> {
-    entry: ash::Entry,
-    instance: ash::Instance,
-    debug_utils_messenger: vk::DebugUtilsMessengerEXT,
-    debug_utils_loader: ash::ext::debug_utils::Instance,
+pub struct RenderInstance {
+    pub entry: ash::Entry,
+    pub instance: ash::Instance,
+    pub debug_utils_messenger: vk::DebugUtilsMessengerEXT,
+    pub debug_utils_loader: ash::ext::debug_utils::Instance,
 }
 
 impl RenderInstance {
@@ -24,7 +24,7 @@ impl RenderInstance {
 
     pub fn new(
         window: Option<Arc<Window>>,
-    ) -> Result<(Self, Option<RenderTarget>)> {
+    ) -> Result<Self> {
         let entry = ash::Entry::linked();
 
         let instance = Self::create_instance(&entry, window.as_ref())?;
@@ -34,53 +34,54 @@ impl RenderInstance {
             debug_utils_loader,
         ) = Self::create_debug_utils_messenger(&entry, &instance)?;
 
-        let (
-            surface,
-            surface_loader
-        ) = if let Some(window) = window.as_ref() {
-            let (surface, surface_loader) = Self::create_surface(&entry, &instance, window)?;
-            (Some(surface), Some(surface_loader))
-        } else {
-            (None, None)
-        };
-
-        let ctx = Self {
+        Ok(Self {
             instance,
             entry,
             debug_utils_messenger,
             debug_utils_loader,
-        };
-
-        let tgt = if let Some(window) = window {
-            Some(RenderTarget::new(
-                window,
-                surface.unwrap(),
-                surface_loader.unwrap(),
-                &ctx)?
-            )
-        } else {
-            None
-        };
-
-        Ok((
-            ctx,
-            tgt,
-        ))
+        })
     }
 
     pub fn create_device(
         &self,
-        tgt: Option<&RenderTarget>,
+        surface: Option<&(vk::SurfaceKHR, ash::khr::surface::Instance)>,
     ) -> Result<RenderDevice> {
-        let (surface, surface_loader) = if let Some(tgt) = tgt {
-            (Some(&tgt.surface), Some(&tgt.surface_loader))
-        } else {
-            (None, None)
-        };
         RenderDevice::new(
-            &self.instance,
+            self,
             surface,
-            surface_loader,
+        )
+    }
+
+    pub fn create_surface(
+        &self,
+        window: &Window,
+    ) -> Result<(vk::SurfaceKHR, ash::khr::surface::Instance)> {
+        let surface = unsafe {
+            ash_window::create_surface(
+                &self.entry,
+                &self.instance,
+                window.display_handle()?.as_raw(),
+                window.window_handle()?.as_raw(),
+                None,
+            )?
+        };
+        let surface_loader = ash::khr::surface::Instance::new(
+            &self.entry,
+            &self.instance,
+        );
+        Ok((surface, surface_loader))
+    }
+
+    pub fn create_target(
+        &self,
+        window: Arc<Window>,
+        surface: (vk::SurfaceKHR, ash::khr::surface::Instance),
+        dev: &RenderDevice,
+    ) -> Result<RenderTarget> {
+        RenderTarget::new(
+            window,
+            surface,
+            dev,
         )
     }
 
@@ -134,24 +135,6 @@ impl RenderInstance {
         Ok((debug_utils_messenger, debug_utils_loader))
     }
 
-    fn create_surface(
-        entry: &ash::Entry,
-        instance: &ash::Instance,
-        window: &Window,
-    ) -> Result<(vk::SurfaceKHR, ash::khr::surface::Instance)> {
-        let surface = unsafe {
-            ash_window::create_surface(
-                entry,
-                instance,
-                window.display_handle()?.as_raw(),
-                window.window_handle()?.as_raw(),
-                None,
-            )?
-        };
-        let surface_loader = ash::khr::surface::Instance::new(entry, instance);
-        Ok((surface, surface_loader))
-    }
-
     fn get_required_instance_extensions(
         window: Option<&Arc<Window>>,
     ) -> Result<Vec<&'static CStr>> {
@@ -182,15 +165,15 @@ impl RenderInstance {
     }
 
     fn check_validation_layers_supported(entry: &ash::Entry) -> Result<()> {
-        let supported_layers = unsafe {
-            entry
-                .enumerate_instance_layer_properties()?
-                .iter()
-                .map(|props| {
-                    props.layer_name_as_c_str()
-                })
-                .collect::<Result<Vec<&CStr>>>()?
+        let layer_props = unsafe {
+            entry.enumerate_instance_layer_properties()?
         };
+        let supported_layers = layer_props
+            .iter()
+            .map(|props| {
+                props.layer_name_as_c_str()
+            })
+            .collect::<std::result::Result<Vec<&CStr>, FromBytesUntilNulError>>()?;
 
         for layer in Self::REQUIRED_VALIDATION_LAYERS {
             if !supported_layers.contains(layer) {

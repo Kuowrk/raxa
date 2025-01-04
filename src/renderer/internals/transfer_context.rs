@@ -3,7 +3,7 @@ use ash::vk;
 use color_eyre::eyre::Result;
 use crate::renderer::internals::queue::Queue;
 
-pub struct TransferContext<'a> {
+pub struct TransferContext {
     transfer_fence: vk::Fence,
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
@@ -12,7 +12,7 @@ pub struct TransferContext<'a> {
     device: Arc<ash::Device>,
 }
 
-impl<'a> TransferContext<'a> {
+impl TransferContext {
     pub fn new(
         transfer_queue: Arc<Queue>,
         device: Arc<ash::Device>,
@@ -101,7 +101,7 @@ impl<'a> TransferContext<'a> {
     }
 }
 
-impl Drop for TransferContext<'_> {
+impl Drop for TransferContext {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_command_pool(self.command_pool, None);

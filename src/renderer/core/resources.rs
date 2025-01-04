@@ -1,8 +1,8 @@
-use color_eyre::Result;
-use ash::vk;
 use crate::renderer::core::device::RenderDevice;
-use crate::renderer::internals::megabuffer::Megabuffer;
 use crate::renderer::internals::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
+use crate::renderer::internals::megabuffer::{MegabufferExt, MegabufferHandle};
+use ash::vk;
+use color_eyre::Result;
 
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * 256; // 256 MB
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 64; // 64 MB
@@ -15,10 +15,10 @@ const MAX_MATERIALS: u32 = 256;
 const MAX_OBJECTS: u32 = 1024;
 
 /// Contains all the resources that the renderer will use like materials, textures, and models
-pub struct RenderResources<'a> {
+pub struct RenderResources {
     pub bindless_descriptor_set_layout: vk::DescriptorSetLayout,
-    pub vertex_megabuffer: Megabuffer<'a>,
-    pub index_megabuffer: Megabuffer<'a>,
+    pub vertex_megabuffer: MegabufferHandle,
+    pub index_megabuffer: MegabufferHandle,
 }
 
 impl RenderResources {

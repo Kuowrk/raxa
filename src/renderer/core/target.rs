@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use crate::renderer::core::device::RenderDevice;
+use crate::renderer::internals::swapchain::Swapchain;
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
+use std::sync::Arc;
 use winit::window::Window;
-use crate::renderer::core::device::RenderDevice;
-use crate::renderer::internals::swapchain::Swapchain;
 
 /// Presentation target of the renderer, encapsulating the window, surface, and swapchain
 pub struct RenderTarget {
@@ -21,10 +21,12 @@ pub struct RenderTarget {
 impl RenderTarget {
     pub fn new(
         window: Arc<Window>,
-        surface: vk::SurfaceKHR,
-        surface_loader: ash::khr::surface::Instance,
+        surface: (vk::SurfaceKHR, ash::khr::surface::Instance),
         dev: &RenderDevice,
     ) -> Result<Self> {
+        let surface_loader = surface.1;
+        let surface = surface.0;
+
         let surface_formats = unsafe {
             surface_loader
                 .get_physical_device_surface_formats(dev.physical, surface)?
@@ -87,41 +89,5 @@ impl RenderTarget {
         Ok(())
     }
 
-
-    /*
-    pub fn resize(&mut self) -> Result<()> {
-        let (
-            new_swapchain,
-            new_swapchain_images,
-        ) = self.swapchain
-            .recreate(SwapchainCreateInfo {
-                image_extent: self.window.inner_size().into(),
-                ..self.swapchain.create_info()
-            })?;
-
-        self.swapchain = new_swapchain;
-        self.swapchain_images = new_swapchain_images;
-        self.swapchain_image_views = Self::create_swapchain_image_views(&self.swapchain_images)?;
-        self.viewport.extent = self.window.inner_size().into();
-
-        Ok(())
-    }
-
-    fn create_swapchain_image_views(
-        swapchain_images: &[Arc<Image>],
-    ) -> Result<Vec<Arc<ImageView>>> {
-        swapchain_images
-            .iter()
-            .map(|image| {
-                ImageView::new_default(image.clone())
-                    .map_err(Into::into)
-            })
-            .collect::<Result<Vec<_>>>()
-    }
-
-    pub fn get_size(&self) -> PhysicalSize<u32> {
-        self.window.inner_size()
-    }
-     */
 }
 

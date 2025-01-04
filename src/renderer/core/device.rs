@@ -6,6 +6,7 @@ use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::DescriptorAllocator;
+use crate::renderer::core::instance::RenderInstance;
 use crate::renderer::internals::megabuffer::Megabuffer;
 use crate::renderer::internals::command_buffer_allocator::CommandBufferAllocator;
 use crate::renderer::internals::queue::{Queue, QueueFamily};
@@ -15,7 +16,7 @@ use crate::renderer::internals::transfer_context::TransferContext;
 pub struct RenderDevice<'a> {
     pub logical: Arc<ash::Device>,
     pub physical: vk::PhysicalDevice,
-    pub instance: &'a ash::Instance,
+    pub instance: &'a RenderInstance,
 
     // For now, require the graphics queue to support presentation
     pub graphics_queue: Arc<Queue>,
@@ -23,17 +24,16 @@ pub struct RenderDevice<'a> {
     pub transfer_queue: Arc<Queue>,
 
     memory_allocator: Arc<Mutex<Allocator>>,
-    command_buffer_allocator: CommandBufferAllocator<'a>,
+    command_buffer_allocator: CommandBufferAllocator,
     descriptor_set_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>,
 
-    transfer_context: Arc<TransferContext<'a>>,
+    transfer_context: Arc<TransferContext>,
 }
 
-impl RenderDevice<'_> {
+impl<'a> RenderDevice<'a> {
     pub fn new(
-        instance: &ash::Instance,
-        surface: Option<&vk::SurfaceKHR>,
-        surface_loader: Option<&ash::khr::surface::Instance>,
+        instance: &'a RenderInstance,
+        surface: Option<&(vk::SurfaceKHR, ash::khr::surface::Instance)>,
     ) -> Result<Self> {
         let (
             physical_device,
@@ -41,9 +41,8 @@ impl RenderDevice<'_> {
             compute_queue_family,
             transfer_queue_family,
         ) = Self::select_physical_device(
-            &instance,
+            &instance.instance,
             surface,
-            surface_loader,
         )?;
 
         let (
@@ -52,7 +51,7 @@ impl RenderDevice<'_> {
             compute_queue,
             transfer_queue,
         ) = Self::create_logical_device(
-            &instance,
+            instance,
             &physical_device,
             graphics_queue_family,
             compute_queue_family,
@@ -60,7 +59,7 @@ impl RenderDevice<'_> {
         )?;
 
         let memory_allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: instance.clone(),
+            instance: instance.instance.clone(),
             device: logical_device.clone(),
             physical_device: physical_device.clone(),
             debug_settings: gpu_allocator::AllocatorDebugSettings {
@@ -81,8 +80,8 @@ impl RenderDevice<'_> {
         let transfer_queue = Arc::new(transfer_queue);
 
         let command_buffer_allocator = CommandBufferAllocator::new(
-            &logical_device,
-            &graphics_queue,
+            logical_device.clone(),
+            graphics_queue.clone(),
         )?;
 
         let descriptor_set_allocator = DescriptorAllocator::new(1024);
@@ -93,7 +92,7 @@ impl RenderDevice<'_> {
         )?;
 
         Ok(Self {
-            logical,
+            logical: logical_device,
             physical: physical_device,
 
             instance,
@@ -139,8 +138,7 @@ impl RenderDevice<'_> {
 
     fn select_physical_device(
         instance: &ash::Instance,
-        surface: Option<&vk::SurfaceKHR>,
-        surface_loader: Option<&ash::khr::surface::Instance>,
+        surface: Option<&(vk::SurfaceKHR, ash::khr::surface::Instance)>,
     ) -> Result<(vk::PhysicalDevice, QueueFamily, QueueFamily, QueueFamily)> {
         let req_device_exts = Self::get_required_device_extensions();
         Ok(unsafe {
@@ -177,7 +175,7 @@ impl RenderDevice<'_> {
                         .enumerate()
                         .position(|(i, q)| {
                             let supports_graphics = q.queue_flags.contains(vk::QueueFlags::GRAPHICS);
-                            if let (Some(surface), Some(surface_loader)) = (surface, surface_loader) {
+                            if let Some((surface, surface_loader)) = surface {
                                 let supports_present = {
                                     surface_loader.get_physical_device_surface_support(
                                         device,
