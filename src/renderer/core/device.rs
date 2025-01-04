@@ -1,4 +1,5 @@
 use std::ffi::{c_char, CStr};
+use std::str::Utf8Error;
 use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::OptionExt;
@@ -139,6 +140,11 @@ impl RenderDevice {
         surface: Option<&(vk::SurfaceKHR, ash::khr::surface::Instance)>,
     ) -> Result<(vk::PhysicalDevice, QueueFamily, QueueFamily, QueueFamily)> {
         let req_device_exts = Self::get_required_device_extensions();
+        let req_device_exts = req_device_exts
+            .iter()
+            .map(|ext| ext.to_str())
+            .collect::<std::result::Result<Vec<&str>, Utf8Error>>()?;
+
         Ok(unsafe {
             instance
                 .enumerate_physical_devices()?
@@ -150,17 +156,21 @@ impl RenderDevice {
                         .map_or(Vec::new(), |exts| exts);
 
                     req_device_exts.iter().all(|req_ext| {
-                        supported_extensions
+                        let req_ext_supported = supported_extensions
                             .iter()
                             .map(|sup_exts| {
                                 sup_exts.extension_name.as_ptr()
                             })
                             .any(|sup_ext| {
-                                match (req_ext.to_str(), CStr::from_ptr(sup_ext).to_str()) {
-                                    (Ok(req), Ok(sup)) => req == sup,
+                                match (*req_ext, CStr::from_ptr(sup_ext).to_str()) {
+                                    (req, Ok(sup)) => req == sup,
                                     _ => false,
                                 }
-                            })
+                            });
+                        if !req_ext_supported {
+                            log::error!("Device extension not supported: {}", req_ext);
+                        }
+                        req_ext_supported
                     })
                 })
                 // Filter out devices that do not contain the required queues
@@ -187,17 +197,23 @@ impl RenderDevice {
                             }
                         });
 
+                    log::error!("graphics_queue_family_index: {:?}", graphics_queue_family_index);
+
                     let compute_queue_family_index = props
                         .iter()
                         .position(|q| {
                             q.queue_flags.contains(vk::QueueFlags::COMPUTE)
                         });
 
+                    log::error!("compute_queue_family_index: {:?}", compute_queue_family_index);
+
                     let transfer_queue_family_index = props
                         .iter()
                         .position(|q| {
                             q.queue_flags.contains(vk::QueueFlags::TRANSFER)
                         });
+
+                    log::error!("transfer_queue_family_index: {:?}", transfer_queue_family_index);
 
                     if let (
                         Some(graphics_queue_family_index),

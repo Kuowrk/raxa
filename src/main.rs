@@ -8,8 +8,8 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     env_logger::init();
 
-    let _app = App::new();
-    //app.run()?;
+    let mut app = App::new()?;
+    app.run()?;
 
     Ok(())
 }

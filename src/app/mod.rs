@@ -5,10 +5,12 @@ use super::renderer::Renderer;
 use color_eyre::Result;
 use std::sync::Arc;
 use std::time::Instant;
+use color_eyre::eyre::OptionExt;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
+use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
 use winit::window::{Window, WindowId};
 use crate::app::camera_controller::CameraController;
 use crate::app::input_state::InputState;
@@ -17,7 +19,7 @@ use crate::renderer::camera::Camera;
 pub struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
-    event_loop: EventLoop<()>,
+    event_loop: Option<EventLoop<()>>,
     camera_controller: CameraController,
 
     // State
@@ -37,7 +39,7 @@ impl App {
         Ok(Self {
             window: None,
             renderer: None,
-            event_loop,
+            event_loop: Some(event_loop),
             camera_controller,
 
             input_state: InputState::default(),
@@ -46,6 +48,15 @@ impl App {
             request_redraws: false,
             close_requested: false,
         })
+    }
+
+    pub fn run(&mut self) -> Result<()> {
+        let event_loop = self.event_loop
+            .take()
+            .ok_or_eyre("Event loop already taken")?;
+        event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+        event_loop.run_app(self)?;
+        Ok(())
     }
 }
 
