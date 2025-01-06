@@ -38,7 +38,7 @@ impl RenderResources {
                 vk::DescriptorType::STORAGE_BUFFER,
                 MAX_MATERIALS,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
+                vk::DescriptorBindingFlags::empty(),
             )
             // Per-object storage buffer
             .add_binding(
@@ -46,7 +46,7 @@ impl RenderResources {
                 vk::DescriptorType::STORAGE_BUFFER,
                 MAX_OBJECTS,
                 vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
+                vk::DescriptorBindingFlags::empty(),
             )
             // Textures
             .add_binding(
@@ -60,14 +60,14 @@ impl RenderResources {
 
         let vertex_megabuffer = dev.create_megabuffer(
             VERTEX_BUFFER_SIZE,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
+            vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             gpu_allocator::MemoryLocation::GpuOnly,
             VERTEX_BUFFER_ALIGNMENT,
         )?;
 
         let index_megabuffer = dev.create_megabuffer(
             INDEX_BUFFER_SIZE,
-            vk::BufferUsageFlags::INDEX_BUFFER,
+            vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             gpu_allocator::MemoryLocation::GpuOnly,
             INDEX_BUFFER_ALIGNMENT,
         )?;

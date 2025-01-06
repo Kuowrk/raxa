@@ -49,7 +49,9 @@ impl CommandBufferAllocator {
 impl Drop for CommandBufferAllocator {
     fn drop(&mut self) {
         unsafe {
-            self.device.free_command_buffers(self.command_pool, &self.command_buffers);
+            if self.command_buffers.len() > 0 {
+                self.device.free_command_buffers(self.command_pool, &self.command_buffers);
+            }
             self.device.destroy_command_pool(self.command_pool, None);
         }
     }
