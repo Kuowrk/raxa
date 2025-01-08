@@ -1,8 +1,10 @@
 use crate::renderer::core::device::RenderDevice;
+use crate::renderer::internals::bindless::BindlessTableType;
 use crate::renderer::internals::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 use crate::renderer::internals::megabuffer::{MegabufferExt, MegabufferHandle};
 use ash::vk;
 use color_eyre::Result;
+use color_eyre::eyre::eyre;
 
 const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * 256; // 256 MB
 const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 64; // 64 MB
@@ -71,6 +73,28 @@ impl RenderResources {
             gpu_allocator::MemoryLocation::GpuOnly,
             INDEX_BUFFER_ALIGNMENT,
         )?;
+        
+        //-----------------------------------------------------------------------------------------
+        
+        let descriptor_sizes = BindlessTableType::descriptor_pool_sizes(immutable_samplers.len() as u32);
+        
+        let descriptor_pool_info = vk::DescriptorPoolCreateInfo::default()
+            .pool_sizes(&descriptor_sizes)
+            .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
+            .max_sets(4);
+        
+        let pool_handle = unsafe {
+            dev.logical.create_descriptor_pool(&descriptor_pool_info, None)
+                .map_err(|e| eyre!(e))?
+        };
+        
+        let mut descriptor_binding_flags = vec![
+            vk::DescriptorBindingFlags::PARTIALLY_BOUND
+                | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
+                | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
+        ];
+        
+        //-----------------------------------------------------------------------------------------
 
         vertex_megabuffer.upload()?;
         index_megabuffer.upload()?;
@@ -81,5 +105,4 @@ impl RenderResources {
             index_megabuffer,
         })
     }
-
 }

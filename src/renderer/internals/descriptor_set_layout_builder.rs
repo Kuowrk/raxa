@@ -21,12 +21,17 @@ impl DescriptorSetLayoutBuilder<'_> {
         descriptor_count: u32,
         stages: vk::ShaderStageFlags,
         binding_flags: vk::DescriptorBindingFlags,
+        immutable_samplers: Option<&[vk::Sampler]>,
     ) -> Self {
-        let binding = vk::DescriptorSetLayoutBinding::default()
+        let mut binding = vk::DescriptorSetLayoutBinding::default()
             .binding(binding)
             .descriptor_type(descriptor_type)
             .descriptor_count(descriptor_count)
             .stage_flags(stages);
+
+        if let Some(immutable_samplers) = immutable_samplers {
+            binding = binding.immutable_samplers(immutable_samplers);
+        }
 
         self.bindings.push(binding);
         self.binding_flags.push(binding_flags);
@@ -35,12 +40,14 @@ impl DescriptorSetLayoutBuilder<'_> {
 
     pub fn build(
         self,
+        flags: vk::DescriptorSetLayoutCreateFlags,
         device: &ash::Device,
     ) -> Result<vk::DescriptorSetLayout> {
-        let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+        let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfoEXT::default()
             .binding_flags(&self.binding_flags);
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
             .bindings(&self.bindings)
+            .flags(flags)
             .push_next(&mut binding_flags_info);
         Ok(unsafe {
             device.create_descriptor_set_layout(&layout_info, None)?

@@ -9,3 +9,4 @@ pub mod command_buffer_allocator;
 pub mod queue;
 pub mod swapchain;
 pub mod megabuffer;
+pub mod bindless;

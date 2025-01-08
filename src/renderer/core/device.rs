@@ -3,7 +3,6 @@ use std::str::Utf8Error;
 use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::OptionExt;
-use color_eyre::eyre::eyre;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::DescriptorAllocator;
@@ -328,7 +327,6 @@ impl RenderDevice {
             ash::khr::synchronization2::NAME,
             ash::khr::maintenance3::NAME,
             ash::ext::descriptor_indexing::NAME,
-            ash::ext::descriptor_buffer::NAME,
 
             #[cfg(target_os = "macos")]
             ash::khr::portability_subset::NAME,
@@ -343,7 +341,6 @@ struct RequiredDeviceFeatures<'a> {
     buffer_device_address_features: vk::PhysicalDeviceBufferDeviceAddressFeatures<'a>,
     shader_draw_parameters_features: vk::PhysicalDeviceShaderDrawParametersFeatures<'a>,
     descriptor_indexing_features: vk::PhysicalDeviceDescriptorIndexingFeaturesEXT<'a>,
-    descriptor_buffer_features: vk::PhysicalDeviceDescriptorBufferFeaturesEXT<'a>,
     dynamic_rendering_features: vk::PhysicalDeviceDynamicRenderingFeaturesKHR<'a>,
 }
 
@@ -369,15 +366,11 @@ impl RequiredDeviceFeatures<'_> {
             vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default()
                 .descriptor_binding_variable_descriptor_count(true)
                 .runtime_descriptor_array(true);
-        let mut descriptor_buffer_features =
-            vk::PhysicalDeviceDescriptorBufferFeaturesEXT::default()
-                .descriptor_buffer(true);
         let mut dynamic_rendering_features =
             vk::PhysicalDeviceDynamicRenderingFeaturesKHR::default()
                 .dynamic_rendering(true);
         
-        dynamic_rendering_features.p_next = &mut descriptor_buffer_features as *mut _ as *mut c_void;
-        descriptor_buffer_features.p_next = &mut descriptor_indexing_features as *mut _ as *mut c_void;
+        dynamic_rendering_features.p_next = &mut descriptor_indexing_features as *mut _ as *mut c_void;
         descriptor_indexing_features.p_next = &mut shader_draw_parameters_features as *mut _ as *mut c_void;
         shader_draw_parameters_features.p_next = &mut buffer_device_address_features as *mut _ as *mut c_void;
         buffer_device_address_features.p_next = &mut synchronization2_features as *mut _ as *mut c_void;
@@ -388,7 +381,6 @@ impl RequiredDeviceFeatures<'_> {
             buffer_device_address_features,
             shader_draw_parameters_features,
             descriptor_indexing_features,
-            descriptor_buffer_features,
             dynamic_rendering_features,
         }
     }
