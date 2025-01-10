@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use ash::vk;
+use crate::renderer::internals::bindless::RenderResourceType;
 
 pub struct DescriptorSetLayoutBuilder<'a> {
     bindings: Vec<vk::DescriptorSetLayoutBinding<'a>>,
@@ -36,6 +37,21 @@ impl DescriptorSetLayoutBuilder<'_> {
         self.bindings.push(binding);
         self.binding_flags.push(binding_flags);
         self
+    }
+
+    pub fn add_binding_for_resource_type(
+        mut self,
+        binding: u32,
+        resource_type: RenderResourceType,
+    ) -> Self {
+        self.add_binding(
+            binding,
+            resource_type.descriptor_type(),
+            resource_type.descriptor_count(),
+            vk::ShaderStageFlags::ALL,
+            resource_type.descriptor_binding_flags(),
+            None,
+        )
     }
 
     pub fn build(

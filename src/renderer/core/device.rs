@@ -385,7 +385,7 @@ impl RequiredDeviceFeatures<'_> {
         }
     }
     
-    pub fn device_create_info<'a>(&'a mut self) -> vk::DeviceCreateInfo<'a> {
+    pub fn device_create_info(&mut self) -> vk::DeviceCreateInfo {
         vk::DeviceCreateInfo::default()
             .enabled_features(&self.features)
             .push_next(&mut self.dynamic_rendering_features)

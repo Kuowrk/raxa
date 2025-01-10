@@ -35,8 +35,11 @@ impl Renderer {
             None
         };
         let dev = ins.create_device(surface.as_ref())?;
-        let tgt = if let Some(window) = window {
-            Some(ins.create_target(window, surface.unwrap(), &dev)?)
+        let tgt = if let (
+            Some(window),
+            Some(surface),
+        ) = (window, surface) {
+            Some(ins.create_target(window, surface, &dev)?)
         } else {
             None
         };

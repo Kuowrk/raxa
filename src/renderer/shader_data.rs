@@ -16,6 +16,7 @@ pub struct PerFrameData {
 #[derive(Debug, Default, Copy, Clone, Pod, Zeroable)]
 pub struct PerMaterialData {
     pub texture_index: u32,
+    pub sampler_index: u32,
 }
 
 /// Data unique to each object passed as elements into a storage buffer
