@@ -1,7 +1,7 @@
 use crate::renderer::core::device::RenderDevice;
-use crate::renderer::internals::bindless::BindlessTableType;
+use crate::renderer::resources::allocator::BindlessTableType;
 use crate::renderer::internals::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
-use crate::renderer::internals::megabuffer::{MegabufferExt, MegabufferHandle};
+use crate::renderer::resources::megabuffer::{MegabufferExt, MegabufferHandle};
 use ash::vk;
 use color_eyre::Result;
 use color_eyre::eyre::eyre;

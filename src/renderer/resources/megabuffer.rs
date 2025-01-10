@@ -1,4 +1,4 @@
-use crate::renderer::internals::buffer::Buffer;
+use crate::renderer::resources::buffer::Buffer;
 use crate::renderer::internals::transfer_context::TransferContext;
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt};

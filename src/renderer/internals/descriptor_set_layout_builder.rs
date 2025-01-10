@@ -1,6 +1,6 @@
 use color_eyre::Result;
 use ash::vk;
-use crate::renderer::internals::bindless::RenderResourceType;
+use crate::renderer::resources::allocator::RenderResourceType;
 
 pub struct DescriptorSetLayoutBuilder<'a> {
     bindings: Vec<vk::DescriptorSetLayoutBinding<'a>>,

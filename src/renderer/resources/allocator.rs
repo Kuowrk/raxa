@@ -1,13 +1,15 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use ash::vk;
+use ash::vk::Buffer;
 use color_eyre::Result;
 
-use super::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
+use crate::renderer::internals::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-#[repr(transparent)]
-pub struct RenderResourceHandle(u32);
+pub struct RenderResourceHandle {
+    index: u32,
+    ty: RenderResourceType,
+}
 
 #[derive(PartialEq)]
 pub enum RenderResourceType {
@@ -39,11 +41,11 @@ impl RenderResourceType {
 
     pub fn descriptor_count(&self) -> u32 {
         match self {
-            Self::UniformBuffer => 1000,
-            Self::StorageBuffer => 1000,
-            Self::StorageImage => 1000,
-            Self::SampledImage => 1000,
-            Self::Sampler => 1000,
+            Self::UniformBuffer => 1024,
+            Self::StorageBuffer => 1024,
+            Self::StorageImage => 1024,
+            Self::SampledImage => 1024,
+            Self::Sampler => 1024,
         }
     }
 
@@ -56,13 +58,15 @@ impl RenderResourceType {
 
 
 pub struct RenderResourceStorage {
+    textures: Vec<Texture>,
+    buffers: Vec<Buffer>,
+    samplers: Vec<Sampler>,
 }
 
 pub struct RenderResourceAllocator {
     bindless_descriptor_pool: vk::DescriptorPool,
     bindless_descriptor_set_layout: vk::DescriptorSetLayout,
     bindless_descriptor_set: vk::DescriptorSet,
-
     device: Arc<ash::Device>,
 }
 
@@ -73,6 +77,13 @@ impl RenderResourceAllocator {
         let bindless_descriptor_pool = Self::create_bindless_descriptor_pool(&device)?;
         let bindless_descriptor_set_layout = Self::create_bindless_descriptor_set_layout(&device)?;
         let bindless_descriptor_set = Self::create_bindless_descriptor_set(bindless_descriptor_pool, bindless_descriptor_set_layout, &device)?;
+
+        Ok(Self {
+            bindless_descriptor_pool,
+            bindless_descriptor_set_layout,
+            bindless_descriptor_set,
+            device,
+        })
     }
 
     fn create_bindless_descriptor_pool(

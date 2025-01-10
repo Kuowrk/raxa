@@ -7,7 +7,7 @@ use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::DescriptorAllocator;
 use crate::renderer::core::instance::RenderInstance;
-use crate::renderer::internals::megabuffer::Megabuffer;
+use crate::renderer::resources::megabuffer::Megabuffer;
 use crate::renderer::internals::command_buffer_allocator::CommandBufferAllocator;
 use crate::renderer::internals::queue::{Queue, QueueFamily};
 use crate::renderer::internals::transfer_context::TransferContext;

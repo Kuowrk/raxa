@@ -6,11 +6,11 @@ use gpu_allocator::{
     vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
     MemoryLocation,
 };
-use crate::renderer::internals::buffer::Buffer;
+use crate::renderer::resources::buffer::Buffer;
 use crate::renderer::internals::transfer_context::TransferContext;
 use crate::renderer::internals::util;
 
-struct AllocatedImageCreateInfo {
+pub struct ImageCreateInfo {
     pub format: vk::Format,
     pub extent: vk::Extent3D,
     pub usage: vk::ImageUsageFlags,
@@ -18,7 +18,7 @@ struct AllocatedImageCreateInfo {
     pub name: String,
 }
 
-pub struct AllocatedImage {
+pub struct Image {
     pub image: vk::Image,
     pub view: vk::ImageView,
     pub format: vk::Format,
@@ -30,13 +30,13 @@ pub struct AllocatedImage {
     device: Arc<ash::Device>,
 }
 
-impl AllocatedImage {
-    // NOTE: The `allocation` field of the AllocatedImage this function returns is GPU-only
+impl Image {
+    // NOTE: The `allocation` field of the Image this function returns is GPU-only
     // and is NOT yet populated with any data.
     // This means that unless you are making a depth image or storage image, you will need to call
-    // `AllocatedImage::upload()`
+    // `Image::upload()`
     fn new(
-        create_info: &AllocatedImageCreateInfo,
+        create_info: &ImageCreateInfo,
         memory_allocator: Arc<Mutex<Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
@@ -104,7 +104,7 @@ impl AllocatedImage {
         transfer_context: &TransferContext,
     ) -> Result<Self> {
         let image = {
-            let create_info = AllocatedImageCreateInfo {
+            let create_info = ImageCreateInfo {
                 format: vk::Format::R8G8B8A8_SRGB,
                 extent: vk::Extent3D {
                     width,
@@ -130,7 +130,7 @@ impl AllocatedImage {
         memory_allocator: Arc<Mutex<Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
-        let create_info = AllocatedImageCreateInfo {
+        let create_info = ImageCreateInfo {
             format: vk::Format::D32_SFLOAT,
             extent: vk::Extent3D {
                 width,
@@ -144,7 +144,7 @@ impl AllocatedImage {
         Self::new(&create_info, memory_allocator, device)
     }
 
-    /// Create a special type of image used by compute shaders
+    /// Create a special type of image likely used by compute shaders
     pub fn new_storage_image(
         width: u32,
         height: u32,
@@ -160,14 +160,14 @@ impl AllocatedImage {
             let usage = vk::ImageUsageFlags::TRANSFER_SRC
                 | vk::ImageUsageFlags::TRANSFER_DST
                 | vk::ImageUsageFlags::STORAGE;
-            let create_info = AllocatedImageCreateInfo {
+            let create_info = ImageCreateInfo {
                 format: vk::Format::R16G16B16A16_SFLOAT,
                 extent,
                 usage,
                 aspect: vk::ImageAspectFlags::COLOR,
                 name: "Storage Image".into(),
             };
-            AllocatedImage::new(&create_info, memory_allocator, device)?
+            Image::new(&create_info, memory_allocator, device)?
         };
 
         Ok(image)
@@ -211,7 +211,7 @@ impl AllocatedImage {
     pub fn copy_to_image(
         &self,
         cmd: vk::CommandBuffer,
-        dst_image: &AllocatedImage,
+        dst_image: &Image,
     ) {
         self.copy_to_vkimage(
             cmd,
@@ -298,14 +298,10 @@ impl AllocatedImage {
                 }
 
                 let mut img_barrier_to_readable = img_barrier_to_transfer;
-                img_barrier_to_readable.old_layout =
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL;
-                img_barrier_to_readable.new_layout =
-                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-                img_barrier_to_readable.src_access_mask =
-                    vk::AccessFlags::TRANSFER_WRITE;
-                img_barrier_to_readable.dst_access_mask =
-                    vk::AccessFlags::SHADER_READ;
+                img_barrier_to_readable.old_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+                img_barrier_to_readable.new_layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+                img_barrier_to_readable.src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
+                img_barrier_to_readable.dst_access_mask = vk::AccessFlags::SHADER_READ;
 
                 // Barrier the image into the shader-readable layout
                 unsafe {
@@ -328,7 +324,7 @@ impl AllocatedImage {
     }
 }
 
-impl Drop for AllocatedImage {
+impl Drop for Image {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_image_view(self.view, None);

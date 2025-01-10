@@ -1,7 +1,7 @@
 use super::mesh::Mesh;
 use super::vertex::Vertex;
 use crate::renderer::core::target::RenderTarget;
-use crate::renderer::internals::megabuffer::{AllocatedMegabufferRegion, Megabuffer, MegabufferExt};
+use crate::renderer::resources::megabuffer::{AllocatedMegabufferRegion, Megabuffer, MegabufferExt};
 use crate::renderer::shader_data::PerVertexData;
 use color_eyre::eyre::{eyre, Result};
 use glam::Vec3;
