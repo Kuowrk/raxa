@@ -1,9 +1,9 @@
 use crate::renderer::internals::transfer_context::TransferContext;
-use crate::renderer::resources::allocator::RenderResourceHandle;
 use crate::renderer::resources::image::Image;
 use color_eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 use std::sync::{Arc, Mutex};
+use crate::renderer::resources::RenderResourceHandle;
 
 pub struct ColorTexture {
     pub image: Image,

@@ -58,17 +58,14 @@ impl DescriptorSetLayoutBuilder<'_> {
         flags: vk::DescriptorSetLayoutCreateFlags,
         device: &ash::Device,
     ) -> Result<vk::DescriptorSetLayout> {
-        for (
-            binding,
-            immutable_samplers
-        ) in self.bindings
+        self.bindings
             .iter_mut()
-            .zip(self.immutable_samplers.iter()) {
-
-            if let Some(immutable_samplers) = immutable_samplers {
-                *binding = binding.immutable_samplers(&immutable_samplers);
-            }
-        }
+            .zip(self.immutable_samplers.iter())
+            .for_each(|(binding, immutable_samplers)| {
+                if let Some(immutable_samplers) = immutable_samplers {
+                    binding.p_immutable_samplers = immutable_samplers.as_ptr();
+                }
+            });
 
         let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfoEXT::default()
             .binding_flags(&self.binding_flags);

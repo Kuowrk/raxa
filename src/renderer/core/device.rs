@@ -2,11 +2,10 @@ use std::ffi::{c_char, c_void, CStr};
 use std::str::Utf8Error;
 use std::sync::{Arc, Mutex};
 use ash::vk;
-use ash::vk::DescriptorPoolCreateFlags;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
-use gpu_descriptor::{CreatePoolError, DescriptorAllocator, DescriptorDevice, DescriptorTotalCount, DeviceAllocationError};
+use gpu_descriptor::{CreatePoolError, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::core::instance::RenderInstance;
 use crate::renderer::resources::megabuffer::Megabuffer;
 use crate::renderer::internals::command_buffer_allocator::CommandBufferAllocator;
@@ -405,7 +404,7 @@ for RenderDevice
         &self,
         descriptor_count: &DescriptorTotalCount,
         max_sets: u32,
-        flags: DescriptorPoolCreateFlags,
+        flags: gpu_descriptor::DescriptorPoolCreateFlags,
     ) -> Result<vk::DescriptorPool, CreatePoolError> {
         let mut array = [vk::DescriptorPoolSize::default(); 13];
         let mut len = 0;

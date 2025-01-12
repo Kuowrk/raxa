@@ -201,11 +201,12 @@ impl Megabuffer {
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
     ) -> Result<MegabufferHandle> {
+        let mem_loc = MemoryLocation::GpuOnly;
         let buffer = Buffer::new(
             size,
             usage,
             "Buffer Allocator Buffer Allocation",
-            MemoryLocation::GpuOnly,
+            mem_loc,
             memory_allocator.clone(),
             device.clone(),
         )?;

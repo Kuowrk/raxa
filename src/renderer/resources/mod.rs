@@ -121,7 +121,7 @@ impl RenderResourceAllocator {
         let bindless_descriptor_set = unsafe {
             descriptor_allocator
                 .allocate(
-                    &dev,
+                    dev,
                     &bindless_descriptor_set_layout,
                     DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND,
                     &DescriptorTotalCount {
