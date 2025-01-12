@@ -7,18 +7,28 @@ pub mod model;
 pub mod buffer;
 pub mod image;
 pub mod megabuffer;
-pub mod allocator;
 pub mod texture;
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
-use ash::vk;
-use color_eyre::Result;
-
+use crate::renderer::core::device::RenderDevice;
 use crate::renderer::internals::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 use crate::renderer::resources::buffer::Buffer;
-use crate::renderer::resources::megabuffer::Megabuffer;
+use crate::renderer::resources::megabuffer::MegabufferHandle;
 use crate::renderer::resources::texture::{ColorTexture, StorageTexture};
+use ash::vk;
+use color_eyre::eyre::OptionExt;
+use color_eyre::Result;
+use gpu_descriptor::{DescriptorAllocator, DescriptorSetLayoutCreateFlags, DescriptorTotalCount};
+
+const VERTEX_BUFFER_SIZE: u64 = 1024 * 1024 * 256; // 256 MB
+const INDEX_BUFFER_SIZE: u64 = 1024 * 1024 * 64; // 64 MB
+const VERTEX_BUFFER_ALIGNMENT: u64 = 16;
+const INDEX_BUFFER_ALIGNMENT: u64 = 4;
+const STORAGE_BUFFER_ALIGNMENT: u64 = 16;
+const UNIFORM_BUFFER_ALIGNMENT: u64 = 256;
+const MAX_TEXTURES: u32 = 1024;
+const MAX_MATERIALS: u32 = 256;
+const MAX_OBJECTS: u32 = 1024;
+
 
 pub struct RenderResourceHandle {
     index: u32,
@@ -71,38 +81,99 @@ impl RenderResourceType {
 }
 
 
-#[derive(Default)]
 pub struct RenderResourceStorage {
     uniform_buffers: Vec<Buffer>,
-    storage_buffers: Vec<Megabuffer>,
+    storage_buffers: Vec<MegabufferHandle>,
     storage_images: Vec<StorageTexture>,
     sampled_images: Vec<ColorTexture>,
     samplers: Vec<vk::Sampler>,
+
+    vertex_megabuffer: MegabufferHandle,
+    index_megabuffer: MegabufferHandle,
 }
 
 pub struct RenderResourceAllocator {
     storage: RenderResourceStorage,
 
-    bindless_descriptor_pool: vk::DescriptorPool,
     bindless_descriptor_set_layout: vk::DescriptorSetLayout,
-    bindless_descriptor_set: vk::DescriptorSet,
-    device: Arc<ash::Device>,
+    bindless_descriptor_set: gpu_descriptor::DescriptorSet<vk::DescriptorSet>,
+
+    descriptor_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>,
 }
 
 impl RenderResourceAllocator {
     pub fn new(
-        device: Arc<ash::Device>,
+        dev: &RenderDevice,
     ) -> Result<Self> {
-        let bindless_descriptor_pool = Self::create_bindless_descriptor_pool(&device)?;
-        let bindless_descriptor_set_layout = Self::create_bindless_descriptor_set_layout(&device)?;
-        let bindless_descriptor_set = Self::create_bindless_descriptor_set(bindless_descriptor_pool, bindless_descriptor_set_layout, &device)?;
-        let storage = RenderResourceStorage::default();
+        let mut descriptor_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>
+            = DescriptorAllocator::new(1024);
+        let bindless_descriptor_set_layout = DescriptorSetLayoutBuilder::new()
+            .add_binding_for_resource_type(0, RenderResourceType::UniformBuffer) // Per-frame
+            .add_binding_for_resource_type(1, RenderResourceType::StorageBuffer) // Per-material
+            .add_binding_for_resource_type(2, RenderResourceType::StorageBuffer) // Per-object
+            .add_binding_for_resource_type(3, RenderResourceType::SampledImage)  // Textures
+            .add_binding_for_resource_type(4, RenderResourceType::Sampler)       // Samplers
+            .build(
+                vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL,
+                &dev.logical,
+            )?;
+
+        let bindless_descriptor_set = unsafe {
+            descriptor_allocator
+                .allocate(
+                    &dev,
+                    &bindless_descriptor_set_layout,
+                    DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND,
+                    &DescriptorTotalCount {
+                        sampler: RenderResourceType::Sampler.descriptor_count(),
+                        combined_image_sampler: 0,
+                        sampled_image: RenderResourceType::SampledImage.descriptor_count(),
+                        storage_image: RenderResourceType::StorageImage.descriptor_count(),
+                        uniform_texel_buffer: 0,
+                        storage_texel_buffer: 0,
+                        uniform_buffer: RenderResourceType::UniformBuffer.descriptor_count(),
+                        storage_buffer: RenderResourceType::StorageBuffer.descriptor_count(),
+                        uniform_buffer_dynamic: 0,
+                        storage_buffer_dynamic: 0,
+                        input_attachment: 0,
+                        acceleration_structure: 0,
+                        inline_uniform_block_bytes: 0,
+                        inline_uniform_block_bindings: 0,
+                    },
+                    1,
+                )?
+                .drain(..)
+                .next()
+                .ok_or_eyre("Failed to allocate bindless descriptor set")?
+        };
+
+        let vertex_megabuffer = dev.create_megabuffer(
+            VERTEX_BUFFER_SIZE,
+            vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            VERTEX_BUFFER_ALIGNMENT,
+        )?;
+
+        let index_megabuffer = dev.create_megabuffer(
+            INDEX_BUFFER_SIZE,
+            vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+            INDEX_BUFFER_ALIGNMENT,
+        )?;
+
+        let storage = RenderResourceStorage {
+            uniform_buffers: Vec::new(),
+            storage_buffers: Vec::new(),
+            storage_images: Vec::new(),
+            sampled_images: Vec::new(),
+            samplers: Vec::new(),
+            vertex_megabuffer,
+            index_megabuffer,
+        };
 
         Ok(Self {
-            bindless_descriptor_pool,
+            storage,
             bindless_descriptor_set_layout,
             bindless_descriptor_set,
-            device,
+            descriptor_allocator,
         })
     }
 
@@ -152,9 +223,10 @@ impl RenderResourceAllocator {
         descriptor_set_layout: vk::DescriptorSetLayout,
         device: &ash::Device,
     ) -> Result<vk::DescriptorSet> {
+        let set_layouts = [descriptor_set_layout];
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(descriptor_pool)
-            .set_layouts(&[descriptor_set_layout]);
+            .set_layouts(&set_layouts);
 
         let descriptor_set = unsafe {
             device.allocate_descriptor_sets(&descriptor_set_allocate_info)?
@@ -239,75 +311,5 @@ impl RenderResourceAllocator {
         Ok(pipeline_layout)
     }
 
-    /// Create descriptor set layouts for each render resource type.
-    fn create_descriptor_set_layouts(
-        immutable_samplers: &[vk::Sampler],
-        device: &ash::Device,
-    ) -> Result<Vec<vk::DescriptorSetLayout>> {
-        RenderResourceType::ALL
-            .iter()
-            .map(|ty| {
-                let mut builder = DescriptorSetLayoutBuilder::new()
-                    .add_binding(
-                        if *ty == RenderResourceType::Texture {
-                            // Set texture binding start at the end of the immutable samplers.
-                            immutable_samplers.len() as u32
-                        } else {
-                            0
-                        },
-                        ty.descriptor_type(),
-                        ty.descriptor_count(),
-                        vk::ShaderStageFlags::ALL,
-                        vk::DescriptorBindingFlags::PARTIALLY_BOUND
-                            | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
-                            | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND,
-                        None,
-                    );
-
-                if *ty == RenderResourceType::Texture {
-                    builder = builder.add_binding(
-                        0,
-                        vk::DescriptorType::SAMPLER,
-                        immutable_samplers.len() as u32,
-                        vk::ShaderStageFlags::ALL,
-                        vk::DescriptorBindingFlags::empty(),
-                        Some(immutable_samplers),
-                    );
-                }
-
-                builder.build(
-                    vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL,
-                    device,
-                )
-            })
-            .collect::<Result<Vec<_>>>()
-    }
-
-    /// Create immutable samplers for the texture descriptor set layout.
-    fn create_immutable_samplers(device: &ash::Device) -> Result<Vec<vk::Sampler>> {
-        let sampler_infos = vec![
-            vk::SamplerCreateInfo::default()
-                .mag_filter(vk::Filter::NEAREST)
-                .min_filter(vk::Filter::NEAREST)
-                .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
-                .address_mode_u(vk::SamplerAddressMode::REPEAT)
-                .address_mode_v(vk::SamplerAddressMode::REPEAT)
-                .address_mode_w(vk::SamplerAddressMode::REPEAT),
-            vk::SamplerCreateInfo::default()
-                .mag_filter(vk::Filter::LINEAR)
-                .min_filter(vk::Filter::LINEAR)
-                .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
-                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE),
-        ];
-
-        let immutable_samplers = sampler_infos
-            .iter()
-            .map(|info| unsafe { device.create_sampler(info, None) })
-            .collect::<ash::prelude::VkResult<Vec<_>>>()?;
-
-        Ok(immutable_samplers)
-    }
      */
 }

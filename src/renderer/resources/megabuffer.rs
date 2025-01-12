@@ -196,7 +196,6 @@ impl Megabuffer {
     pub fn new(
         size: u64,
         usage: vk::BufferUsageFlags,
-        mem_loc: MemoryLocation,
         alignment: u64,
         memory_allocator: Arc<Mutex<Allocator>>,
         device: Arc<ash::Device>,
@@ -206,7 +205,7 @@ impl Megabuffer {
             size,
             usage,
             "Buffer Allocator Buffer Allocation",
-            mem_loc,
+            MemoryLocation::GpuOnly,
             memory_allocator.clone(),
             device.clone(),
         )?;

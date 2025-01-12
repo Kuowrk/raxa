@@ -1,10 +1,11 @@
 use color_eyre::Result;
 use ash::vk;
-use crate::renderer::resources::allocator::RenderResourceType;
+use crate::renderer::resources::RenderResourceType;
 
 pub struct DescriptorSetLayoutBuilder<'a> {
     bindings: Vec<vk::DescriptorSetLayoutBinding<'a>>,
     binding_flags: Vec<vk::DescriptorBindingFlags>,
+    immutable_samplers: Vec<Option<Vec<vk::Sampler>>>,
 }
 
 impl DescriptorSetLayoutBuilder<'_> {
@@ -12,6 +13,7 @@ impl DescriptorSetLayoutBuilder<'_> {
         Self {
             bindings: Vec::new(),
             binding_flags: Vec::new(),
+            immutable_samplers: Vec::new(),
         }
     }
 
@@ -22,25 +24,22 @@ impl DescriptorSetLayoutBuilder<'_> {
         descriptor_count: u32,
         stages: vk::ShaderStageFlags,
         binding_flags: vk::DescriptorBindingFlags,
-        immutable_samplers: Option<&[vk::Sampler]>,
+        immutable_samplers: Option<Vec<vk::Sampler>>,
     ) -> Self {
-        let mut binding = vk::DescriptorSetLayoutBinding::default()
+        let binding = vk::DescriptorSetLayoutBinding::default()
             .binding(binding)
             .descriptor_type(descriptor_type)
             .descriptor_count(descriptor_count)
             .stage_flags(stages);
 
-        if let Some(immutable_samplers) = immutable_samplers {
-            binding = binding.immutable_samplers(immutable_samplers);
-        }
-
         self.bindings.push(binding);
         self.binding_flags.push(binding_flags);
+        self.immutable_samplers.push(immutable_samplers);
         self
     }
 
     pub fn add_binding_for_resource_type(
-        mut self,
+        self,
         binding: u32,
         resource_type: RenderResourceType,
     ) -> Self {
@@ -55,16 +54,30 @@ impl DescriptorSetLayoutBuilder<'_> {
     }
 
     pub fn build(
-        self,
+        mut self,
         flags: vk::DescriptorSetLayoutCreateFlags,
         device: &ash::Device,
     ) -> Result<vk::DescriptorSetLayout> {
+        for (
+            binding,
+            immutable_samplers
+        ) in self.bindings
+            .iter_mut()
+            .zip(self.immutable_samplers.iter()) {
+
+            if let Some(immutable_samplers) = immutable_samplers {
+                *binding = binding.immutable_samplers(&immutable_samplers);
+            }
+        }
+
         let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfoEXT::default()
             .binding_flags(&self.binding_flags);
+
         let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
             .bindings(&self.bindings)
             .flags(flags)
             .push_next(&mut binding_flags_info);
+
         Ok(unsafe {
             device.create_descriptor_set_layout(&layout_info, None)?
         })

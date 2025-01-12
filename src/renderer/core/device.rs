@@ -2,15 +2,17 @@ use std::ffi::{c_char, c_void, CStr};
 use std::str::Utf8Error;
 use std::sync::{Arc, Mutex};
 use ash::vk;
+use ash::vk::DescriptorPoolCreateFlags;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
-use gpu_descriptor::DescriptorAllocator;
+use gpu_descriptor::{CreatePoolError, DescriptorAllocator, DescriptorDevice, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::core::instance::RenderInstance;
 use crate::renderer::resources::megabuffer::Megabuffer;
 use crate::renderer::internals::command_buffer_allocator::CommandBufferAllocator;
 use crate::renderer::internals::queue::{Queue, QueueFamily};
 use crate::renderer::internals::transfer_context::TransferContext;
+use crate::renderer::resources::RenderResourceAllocator;
 
 /// Main structure for the renderer that can create resources
 pub struct RenderDevice {
@@ -24,7 +26,7 @@ pub struct RenderDevice {
 
     memory_allocator: Arc<Mutex<Allocator>>,
     command_buffer_allocator: CommandBufferAllocator,
-    descriptor_set_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>,
+    render_resource_allocator: Option<RenderResourceAllocator>,
 
     transfer_context: Arc<TransferContext>,
 }
@@ -83,14 +85,12 @@ impl RenderDevice {
             graphics_queue.clone(),
         )?;
 
-        let descriptor_set_allocator = DescriptorAllocator::new(1024);
-
         let transfer_context = TransferContext::new(
             transfer_queue.clone(),
             logical_device.clone(),
         )?;
 
-        Ok(Self {
+        let mut dev = Self {
             logical: logical_device,
             physical: physical_device,
 
@@ -100,10 +100,18 @@ impl RenderDevice {
 
             memory_allocator: Arc::new(Mutex::new(memory_allocator)),
             command_buffer_allocator,
-            descriptor_set_allocator,
+            render_resource_allocator: None,
 
             transfer_context: Arc::new(transfer_context),
-        })
+        };
+
+        let render_resource_allocator = RenderResourceAllocator::new(
+            &dev,
+        )?;
+
+        dev.render_resource_allocator = Some(render_resource_allocator);
+
+        Ok(dev)
     }
 
     pub fn immediate_submit<F>(
@@ -120,13 +128,11 @@ impl RenderDevice {
         &self,
         size: u64,
         usage: vk::BufferUsageFlags,
-        mem_loc: gpu_allocator::MemoryLocation,
         alignment: u64,
     ) -> Result<Arc<Mutex<Megabuffer>>> {
         Megabuffer::new(
             size,
             usage,
-            mem_loc,
             alignment,
             self.memory_allocator.clone(),
             self.logical.clone(),
@@ -389,5 +395,178 @@ impl RequiredDeviceFeatures<'_> {
         vk::DeviceCreateInfo::default()
             .enabled_features(&self.features)
             .push_next(&mut self.dynamic_rendering_features)
+    }
+}
+
+impl DescriptorDevice<vk::DescriptorSetLayout, vk::DescriptorPool, vk::DescriptorSet>
+for RenderDevice
+{
+    unsafe fn create_descriptor_pool(
+        &self,
+        descriptor_count: &DescriptorTotalCount,
+        max_sets: u32,
+        flags: DescriptorPoolCreateFlags,
+    ) -> Result<vk::DescriptorPool, CreatePoolError> {
+        let mut array = [vk::DescriptorPoolSize::default(); 13];
+        let mut len = 0;
+
+        if descriptor_count.sampler != 0 {
+            array[len].ty = vk::DescriptorType::SAMPLER;
+            array[len].descriptor_count = descriptor_count.sampler;
+            len += 1;
+        }
+
+        if descriptor_count.combined_image_sampler != 0 {
+            array[len].ty = vk::DescriptorType::COMBINED_IMAGE_SAMPLER;
+            array[len].descriptor_count = descriptor_count.combined_image_sampler;
+            len += 1;
+        }
+
+        if descriptor_count.sampled_image != 0 {
+            array[len].ty = vk::DescriptorType::SAMPLED_IMAGE;
+            array[len].descriptor_count = descriptor_count.sampled_image;
+            len += 1;
+        }
+
+        if descriptor_count.storage_image != 0 {
+            array[len].ty = vk::DescriptorType::STORAGE_IMAGE;
+            array[len].descriptor_count = descriptor_count.storage_image;
+            len += 1;
+        }
+
+        if descriptor_count.uniform_texel_buffer != 0 {
+            array[len].ty = vk::DescriptorType::UNIFORM_TEXEL_BUFFER;
+            array[len].descriptor_count = descriptor_count.uniform_texel_buffer;
+            len += 1;
+        }
+
+        if descriptor_count.storage_texel_buffer != 0 {
+            array[len].ty = vk::DescriptorType::STORAGE_TEXEL_BUFFER;
+            array[len].descriptor_count = descriptor_count.storage_texel_buffer;
+            len += 1;
+        }
+
+        if descriptor_count.uniform_buffer != 0 {
+            array[len].ty = vk::DescriptorType::UNIFORM_BUFFER;
+            array[len].descriptor_count = descriptor_count.uniform_buffer;
+            len += 1;
+        }
+
+        if descriptor_count.storage_buffer != 0 {
+            array[len].ty = vk::DescriptorType::STORAGE_BUFFER;
+            array[len].descriptor_count = descriptor_count.storage_buffer;
+            len += 1;
+        }
+
+        if descriptor_count.uniform_buffer_dynamic != 0 {
+            array[len].ty = vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC;
+            array[len].descriptor_count = descriptor_count.uniform_buffer_dynamic;
+            len += 1;
+        }
+
+        if descriptor_count.storage_buffer_dynamic != 0 {
+            array[len].ty = vk::DescriptorType::STORAGE_BUFFER_DYNAMIC;
+            array[len].descriptor_count = descriptor_count.storage_buffer_dynamic;
+            len += 1;
+        }
+
+        if descriptor_count.input_attachment != 0 {
+            array[len].ty = vk::DescriptorType::INPUT_ATTACHMENT;
+            array[len].descriptor_count = descriptor_count.input_attachment;
+            len += 1;
+        }
+
+        if descriptor_count.acceleration_structure != 0 {
+            array[len].ty = vk::DescriptorType::ACCELERATION_STRUCTURE_KHR;
+            array[len].descriptor_count = descriptor_count.acceleration_structure;
+            len += 1;
+        }
+
+        if descriptor_count.inline_uniform_block_bytes != 0 {
+            panic!("Inline uniform blocks are not supported");
+        }
+
+        if descriptor_count.inline_uniform_block_bindings != 0 {
+            panic!("Inline uniform blocks are not supported");
+        }
+
+        let mut ash_flags = vk::DescriptorPoolCreateFlags::empty();
+
+        if flags.contains(DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET) {
+            ash_flags |= vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET;
+        }
+
+        if flags.contains(DescriptorPoolCreateFlags::UPDATE_AFTER_BIND) {
+            ash_flags |= vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND;
+        }
+
+        let result = unsafe {
+            self.logical.create_descriptor_pool(
+                &vk::DescriptorPoolCreateInfo::default()
+                    .max_sets(max_sets)
+                    .pool_sizes(&array[..len])
+                    .flags(ash_flags),
+                None,
+            )
+        };
+
+        match result {
+            Ok(pool) => Ok(pool),
+            Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) => Err(CreatePoolError::OutOfDeviceMemory),
+            Err(vk::Result::ERROR_OUT_OF_HOST_MEMORY) => Err(CreatePoolError::OutOfHostMemory),
+            Err(vk::Result::ERROR_FRAGMENTATION) => Err(CreatePoolError::Fragmentation),
+            Err(err) => panic!("Unexpected return code '{}'", err),
+        }
+    }
+
+    unsafe fn destroy_descriptor_pool(&self, pool: vk::DescriptorPool) {
+        unsafe {
+            self.logical.destroy_descriptor_pool(pool, None)
+        }
+    }
+
+    unsafe fn alloc_descriptor_sets<'a>(
+        &self,
+        pool: &mut vk::DescriptorPool,
+        layouts: impl ExactSizeIterator<Item = &'a vk::DescriptorSetLayout>,
+        sets: &mut impl Extend<vk::DescriptorSet>,
+    ) -> Result<(), DeviceAllocationError> {
+        let set_layouts: smallvec::SmallVec<[_; 16]> = layouts.copied().collect();
+
+        unsafe {
+            match self.logical.allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::default()
+                    .set_layouts(&set_layouts)
+                    .descriptor_pool(*pool),
+            ) {
+                Ok(allocated) => {
+                    sets.extend(allocated);
+                    Ok(())
+                }
+                Err(vk::Result::ERROR_OUT_OF_HOST_MEMORY) => {
+                    Err(DeviceAllocationError::OutOfHostMemory)
+                }
+                Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) => {
+                    Err(DeviceAllocationError::OutOfDeviceMemory)
+                }
+                Err(vk::Result::ERROR_FRAGMENTED_POOL) => Err(DeviceAllocationError::OutOfPoolMemory),
+                Err(vk::Result::ERROR_OUT_OF_POOL_MEMORY) => Err(DeviceAllocationError::FragmentedPool),
+                Err(err) => panic!("Unexpected return code '{}'", err),
+            }
+        }
+    }
+
+    unsafe fn dealloc_descriptor_sets<'a>(
+        &self,
+        pool: &mut vk::DescriptorPool,
+        sets: impl Iterator<Item = vk::DescriptorSet>,
+    ) {
+        let sets: smallvec::SmallVec<[_; 16]> = sets.collect();
+        unsafe {
+            match self.logical.free_descriptor_sets(*pool, &sets) {
+                Ok(()) => {}
+                Err(err) => panic!("Unexpected return code '{}'", err),
+            }
+        }
     }
 }

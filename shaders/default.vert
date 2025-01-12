@@ -1,6 +1,5 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_descriptor_indexing : require
 
 struct PerFrameData {
     mat4 viewproj;

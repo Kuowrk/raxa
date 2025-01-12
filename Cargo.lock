@@ -1300,6 +1300,7 @@ dependencies = [
  "log",
  "presser",
  "raw-window-handle",
+ "smallvec",
  "winit",
 ]
 

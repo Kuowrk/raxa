@@ -10,7 +10,6 @@ use color_eyre::Result;
 use std::sync::Arc;
 use core::config::RenderConfig;
 use core::instance::RenderInstance;
-use core::resources::RenderResources;
 use core::state::RenderState;
 use core::target::RenderTarget;
 use crate::renderer::core::device::RenderDevice;
@@ -20,7 +19,6 @@ pub struct Renderer {
     tgt: Option<RenderTarget>,
     dev: RenderDevice,
     cfg: RenderConfig,
-    res: RenderResources,
     ste: RenderState,
 }
 
@@ -44,7 +42,6 @@ impl Renderer {
             None
         };
         let cfg = RenderConfig::default();
-        let res = RenderResources::new(&dev)?;
         let ste = RenderState::new()?;
 
         Ok(Self {
@@ -52,7 +49,6 @@ impl Renderer {
             tgt,
             dev,
             cfg,
-            res,
             ste,
         })
     }
