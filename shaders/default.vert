@@ -24,8 +24,8 @@ layout(set = 0, binding = 1) buffer PerMaterialBuffer {
 layout(set = 0, binding = 2) buffer PerObjectBuffer {
     PerObjectData data[];
 } per_object;
-layout(set = 0, binding = 3) uniform texture2D textures[];
-layout(set = 0, binding = 4) uniform sampler samplers[];
+layout(set = 0, binding = 3) uniform sampler samplers[];
+layout(set = 0, binding = 4) uniform texture2D textures[];
 
 layout(push_constant) uniform PerDrawData {
     uint object_index;

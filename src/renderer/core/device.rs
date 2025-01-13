@@ -369,8 +369,12 @@ impl RequiredDeviceFeatures<'_> {
                 .shader_draw_parameters(true);
         let mut descriptor_indexing_features =
             vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default()
+                .runtime_descriptor_array(true)
+                .descriptor_binding_partially_bound(true)
                 .descriptor_binding_variable_descriptor_count(true)
-                .runtime_descriptor_array(true);
+                .descriptor_binding_uniform_buffer_update_after_bind(true)
+                .descriptor_binding_storage_buffer_update_after_bind(true)
+                .descriptor_binding_sampled_image_update_after_bind(true);
         let mut dynamic_rendering_features =
             vk::PhysicalDeviceDynamicRenderingFeaturesKHR::default()
                 .dynamic_rendering(true);
