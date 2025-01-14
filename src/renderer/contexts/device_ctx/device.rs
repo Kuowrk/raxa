@@ -13,7 +13,7 @@ use crate::renderer::internals::queue::{Queue, QueueFamily};
 use crate::renderer::internals::transfer_context::TransferContext;
 use crate::renderer::resources::RenderResourceAllocator;
 
-/// Main structure for the renderer that can create resources
+/// Main structure for the renderer that can create resource_ctx
 pub struct RenderDevice {
     pub logical: Arc<ash::Device>,
     pub physical: vk::PhysicalDevice,
@@ -25,7 +25,6 @@ pub struct RenderDevice {
 
     memory_allocator: Arc<Mutex<Allocator>>,
     command_buffer_allocator: CommandBufferAllocator,
-    render_resource_allocator: Option<RenderResourceAllocator>,
 
     transfer_context: Arc<TransferContext>,
 }
@@ -89,7 +88,7 @@ impl RenderDevice {
             logical_device.clone(),
         )?;
 
-        let mut dev = Self {
+        let dev = Self {
             logical: logical_device,
             physical: physical_device,
 
@@ -99,16 +98,9 @@ impl RenderDevice {
 
             memory_allocator: Arc::new(Mutex::new(memory_allocator)),
             command_buffer_allocator,
-            render_resource_allocator: None,
 
             transfer_context: Arc::new(transfer_context),
         };
-
-        let render_resource_allocator = RenderResourceAllocator::new(
-            &dev,
-        )?;
-
-        dev.render_resource_allocator = Some(render_resource_allocator);
 
         Ok(dev)
     }
@@ -137,6 +129,10 @@ impl RenderDevice {
             self.logical.clone(),
             self.transfer_context.clone(),
         )
+    }
+
+    pub fn create_resource_allocator(&self) -> Result<RenderResourceAllocator> {
+        RenderResourceAllocator::new(self)
     }
 
     fn select_physical_device(

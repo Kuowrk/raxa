@@ -2,8 +2,8 @@ use ash::prelude::VkResult;
 use ash::vk;
 use color_eyre::Result;
 use winit::window::Window;
-use crate::renderer::core::device::RenderDevice;
-use crate::renderer::core::instance::RenderInstance;
+use crate::renderer::contexts::device::RenderDevice;
+use crate::renderer::contexts::instance::RenderInstance;
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,

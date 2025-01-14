@@ -1,4 +1,5 @@
 /// "Internals" refers to low-level objects that are used to implement the "Resources" objects.
+/// They should not be used directly by the user.
 
 pub mod descriptor_set_layout_builder;
 pub mod transfer_context;
