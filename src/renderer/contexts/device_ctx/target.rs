@@ -1,5 +1,5 @@
 use crate::renderer::contexts::device::RenderDevice;
-use crate::renderer::internals::swapchain::Swapchain;
+use crate::renderer::contexts::device_ctx::swapchain::Swapchain;
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;

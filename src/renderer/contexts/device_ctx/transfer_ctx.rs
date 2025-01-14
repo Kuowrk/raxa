@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use ash::vk;
 use color_eyre::eyre::Result;
-use crate::renderer::internals::queue::Queue;
+use crate::renderer::contexts::device_ctx::queue::Queue;
 
 pub struct TransferContext {
     transfer_fence: vk::Fence,

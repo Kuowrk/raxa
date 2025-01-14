@@ -1,6 +1,10 @@
 pub mod instance;
 pub mod device;
 pub mod target;
+pub mod queue;
+pub mod swapchain;
+pub mod transfer_ctx;
+pub mod command_buffer_allocator;
 
 use std::sync::Arc;
 use color_eyre::Result;

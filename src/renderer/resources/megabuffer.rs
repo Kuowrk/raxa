@@ -1,5 +1,5 @@
 use crate::renderer::resources::buffer::Buffer;
-use crate::renderer::internals::transfer_context::TransferContext;
+use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Result;

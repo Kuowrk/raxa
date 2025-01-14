@@ -4,7 +4,7 @@ use color_eyre::Result;
 use gpu_descriptor::{DescriptorAllocator, DescriptorSetLayoutCreateFlags, DescriptorTotalCount};
 use crate::renderer::contexts::device_ctx::device::RenderDevice;
 use crate::renderer::contexts::resource_ctx::storage::RenderResourceStorage;
-use crate::renderer::internals::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
+use crate::renderer::contexts::resource_ctx::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
 use crate::renderer::shader_data::PerDrawData;
 
 const MAX_SAMPLED_IMAGES: u32 = 1024;

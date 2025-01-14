@@ -1,4 +1,4 @@
-use crate::renderer::internals::transfer_context::TransferContext;
+use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 use crate::renderer::resources::image::Image;
 use color_eyre::Result;
 use gpu_allocator::vulkan::Allocator;

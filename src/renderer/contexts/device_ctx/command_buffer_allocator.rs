@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use ash::vk;
 use color_eyre::Result;
-use crate::renderer::internals::queue::Queue;
+use crate::renderer::contexts::device_ctx::queue::Queue;
 
 /// Each CommandBufferAllocator is associated with a single queue
 pub struct CommandBufferAllocator {

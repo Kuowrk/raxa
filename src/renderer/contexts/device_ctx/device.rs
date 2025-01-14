@@ -8,9 +8,9 @@ use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::{CreatePoolError, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::core::instance::RenderInstance;
 use crate::renderer::resources::megabuffer::Megabuffer;
-use crate::renderer::internals::command_buffer_allocator::CommandBufferAllocator;
-use crate::renderer::internals::queue::{Queue, QueueFamily};
-use crate::renderer::internals::transfer_context::TransferContext;
+use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandBufferAllocator;
+use crate::renderer::contexts::device_ctx::queue::{Queue, QueueFamily};
+use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 use crate::renderer::resources::RenderResourceAllocator;
 
 /// Main structure for the renderer that can create resource_ctx
