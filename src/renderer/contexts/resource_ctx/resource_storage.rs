@@ -1,5 +1,5 @@
 use ash::vk;
-use crate::renderer::contexts::device::RenderDevice;
+use crate::renderer::contexts::device_ctx::RenderDeviceContext;
 use crate::renderer::resources::buffer::Buffer;
 use crate::renderer::resources::megabuffer::MegabufferHandle;
 use crate::renderer::resources::texture::{ColorTexture, StorageTexture};
@@ -24,18 +24,20 @@ pub struct RenderResourceStorage {
 
 impl RenderResourceStorage {
     pub fn new(
-        dev: &RenderDevice,
+        dev_ctx: &RenderDeviceContext,
     ) -> color_eyre::Result<Self> {
-        let vertex_megabuffer = dev.create_megabuffer(
-            crate::renderer::resources::VERTEX_BUFFER_SIZE,
+        let device = &dev_ctx.device;
+
+        let vertex_megabuffer = device.create_megabuffer(
+            VERTEX_BUFFER_SIZE,
             vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
-            crate::renderer::resources::VERTEX_BUFFER_ALIGNMENT,
+            VERTEX_BUFFER_ALIGNMENT,
         )?;
 
-        let index_megabuffer = dev.create_megabuffer(
-            crate::renderer::resources::INDEX_BUFFER_SIZE,
+        let index_megabuffer = device.create_megabuffer(
+            INDEX_BUFFER_SIZE,
             vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
-            crate::renderer::resources::INDEX_BUFFER_ALIGNMENT,
+            INDEX_BUFFER_ALIGNMENT,
         )?;
 
         Ok(Self {

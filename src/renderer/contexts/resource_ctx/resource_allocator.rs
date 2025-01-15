@@ -1,11 +1,10 @@
+use crate::renderer::contexts::device_ctx::RenderDeviceContext;
+use crate::renderer::contexts::resource_ctx::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
+use crate::renderer::shader_data::PerDrawData;
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use gpu_descriptor::{DescriptorAllocator, DescriptorSetLayoutCreateFlags, DescriptorTotalCount};
-use crate::renderer::contexts::device_ctx::device::RenderDevice;
-use crate::renderer::contexts::resource_ctx::storage::RenderResourceStorage;
-use crate::renderer::contexts::resource_ctx::descriptor_set_layout_builder::DescriptorSetLayoutBuilder;
-use crate::renderer::shader_data::PerDrawData;
 
 const MAX_SAMPLED_IMAGES: u32 = 1024;
 const MAX_SAMPLERS: u32 = 16;
@@ -81,8 +80,6 @@ impl RenderResourceType {
 }
 
 pub struct RenderResourceAllocator {
-    storage: RenderResourceStorage,
-
     bindless_descriptor_set_layout: vk::DescriptorSetLayout,
     bindless_descriptor_set: gpu_descriptor::DescriptorSet<vk::DescriptorSet>,
     bindless_pipeline_layout: vk::PipelineLayout,
@@ -92,8 +89,10 @@ pub struct RenderResourceAllocator {
 
 impl RenderResourceAllocator {
     pub fn new(
-        dev: &RenderDevice,
+        dev_ctx: &RenderDeviceContext,
     ) -> Result<Self> {
+        let device = &dev_ctx.device;
+
         let mut descriptor_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>
             = DescriptorAllocator::new(1024);
         let bindless_descriptor_set_layout = DescriptorSetLayoutBuilder::new()
@@ -104,13 +103,13 @@ impl RenderResourceAllocator {
             .add_binding_for_resource_type(4, RenderResourceType::SampledImage)  // Textures
             .build(
                 vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL,
-                &dev.logical,
+                &device.logical,
             )?;
 
         let bindless_descriptor_set = unsafe {
             descriptor_allocator
                 .allocate(
-                    dev,
+                    device,
                     &bindless_descriptor_set_layout,
                     DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND,
                     &DescriptorTotalCount {
@@ -138,13 +137,10 @@ impl RenderResourceAllocator {
 
         let bindless_pipeline_layout = Self::create_pipeline_layout(
             bindless_descriptor_set_layout,
-            &dev.logical,
+            &device.logical,
         )?;
 
-        let storage = RenderResourceStorage::new(dev)?;
-
         Ok(Self {
-            storage,
             bindless_descriptor_set_layout,
             bindless_descriptor_set,
             bindless_pipeline_layout,

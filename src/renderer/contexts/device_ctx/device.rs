@@ -6,12 +6,11 @@ use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::{CreatePoolError, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
-use crate::renderer::core::instance::RenderInstance;
 use crate::renderer::resources::megabuffer::Megabuffer;
 use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandBufferAllocator;
+use crate::renderer::contexts::device_ctx::instance::RenderInstance;
 use crate::renderer::contexts::device_ctx::queue::{Queue, QueueFamily};
 use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
-use crate::renderer::resources::RenderResourceAllocator;
 
 /// Main structure for the renderer that can create resource_ctx
 pub struct RenderDevice {
@@ -129,10 +128,6 @@ impl RenderDevice {
             self.logical.clone(),
             self.transfer_context.clone(),
         )
-    }
-
-    pub fn create_resource_allocator(&self) -> Result<RenderResourceAllocator> {
-        RenderResourceAllocator::new(self)
     }
 
     fn select_physical_device(

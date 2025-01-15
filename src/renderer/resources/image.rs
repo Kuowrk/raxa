@@ -8,7 +8,6 @@ use gpu_allocator::{
 };
 use crate::renderer::resources::buffer::Buffer;
 use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
-use crate::renderer::internals::util;
 
 pub struct ImageCreateInfo {
     pub format: vk::Format,

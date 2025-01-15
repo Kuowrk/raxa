@@ -3,7 +3,7 @@ use crate::renderer::resources::image::Image;
 use color_eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 use std::sync::{Arc, Mutex};
-use crate::renderer::resources::RenderResourceHandle;
+use crate::renderer::contexts::resource_ctx::resource_allocator::RenderResourceHandle;
 
 pub struct ColorTexture {
     pub image: Image,

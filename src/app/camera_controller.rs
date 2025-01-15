@@ -4,8 +4,7 @@ use winit::dpi::PhysicalPosition;
 use winit::error::ExternalError;
 use winit::window::Window;
 use crate::app::input_state::InputState;
-use crate::renderer::camera::Camera;
-use crate::renderer::util;
+use crate::renderer::camera::{calculate_direction, calculate_pitch, calculate_yaw, Camera};
 
 pub struct CameraController {
     camera: Camera,
@@ -152,14 +151,14 @@ impl CameraController {
         let curr_piv_to_eye = Vec4::new(v.x, v.y, v.z, 1.0);
         let new_piv_to_eye = (rot_x * rot_y * curr_piv_to_eye).xyz();
 
-        if util::calculate_pitch(new_piv_to_eye).abs() <= self.rotation_max_angle_y {
+        if calculate_pitch(new_piv_to_eye).abs() <= self.rotation_max_angle_y {
             self.rotation_desired_pivot_to_eye = new_piv_to_eye;
         }
         else {
             // Clamp the pitch angle
             let pitch = self.rotation_max_angle_y * new_piv_to_eye.y.signum();
-            let yaw = util::calculate_yaw(new_piv_to_eye);
-            let new_piv_to_eye = util::calculate_direction(pitch, yaw);
+            let yaw = calculate_yaw(new_piv_to_eye);
+            let new_piv_to_eye = calculate_direction(pitch, yaw);
             self.rotation_desired_pivot_to_eye = new_piv_to_eye;
         }
     }

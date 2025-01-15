@@ -1,11 +1,11 @@
-use crate::renderer::contexts::device::RenderDevice;
 use crate::renderer::contexts::device_ctx::swapchain::Swapchain;
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use std::sync::Arc;
 use winit::window::Window;
-use crate::renderer::contexts::instance::RenderInstance;
+use crate::renderer::contexts::device_ctx::device::RenderDevice;
+use crate::renderer::contexts::device_ctx::instance::RenderInstance;
 
 /// Presentation target of the renderer, encapsulating the window, surface, and swapchain
 pub struct RenderTarget {

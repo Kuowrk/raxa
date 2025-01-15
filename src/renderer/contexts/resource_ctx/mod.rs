@@ -1,12 +1,11 @@
-use crate::renderer::contexts::resource_ctx::allocator::RenderResourceAllocator;
-use crate::renderer::contexts::resource_ctx::storage::RenderResourceStorage;
-
-pub mod allocator;
-pub mod storage;
-/// "Internals" refers to low-level objects that are used to implement the "Resources" objects.
-/// They should not be used directly by the user.
-
+pub mod resource_allocator;
+pub mod resource_storage;
 pub mod descriptor_set_layout_builder;
+
+use color_eyre::Result;
+use crate::renderer::contexts::device_ctx::RenderDeviceContext;
+use crate::renderer::contexts::resource_ctx::resource_allocator::RenderResourceAllocator;
+use crate::renderer::contexts::resource_ctx::resource_storage::RenderResourceStorage;
 
 /// Responsibilities:
 /// - Manage resources like buffers, images, and samplers
@@ -15,4 +14,18 @@ pub mod descriptor_set_layout_builder;
 pub struct RenderResourceContext {
     pub allocator: RenderResourceAllocator,
     pub storage: RenderResourceStorage,
+}
+
+impl RenderResourceContext {
+    pub fn new(
+        dev_ctx: &RenderDeviceContext,
+    ) -> Result<Self> {
+        let allocator = RenderResourceAllocator::new(dev_ctx)?;
+        let storage = RenderResourceStorage::new(dev_ctx)?;
+
+        Ok(Self {
+            allocator,
+            storage,
+        })
+    }
 }

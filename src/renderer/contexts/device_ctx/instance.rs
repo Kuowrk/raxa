@@ -5,8 +5,8 @@ use color_eyre::Result;
 use std::sync::Arc;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::Window;
-use crate::renderer::core::target::RenderTarget;
-use crate::renderer::core::device::RenderDevice;
+use crate::renderer::contexts::device_ctx::device::RenderDevice;
+use crate::renderer::contexts::device_ctx::target::RenderTarget;
 
 /// Initializes Vulkan and keeps the Vulkan instance alive
 pub struct RenderInstance {
