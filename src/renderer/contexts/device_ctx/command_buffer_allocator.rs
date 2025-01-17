@@ -1,58 +1,94 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use ash::vk;
+use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
-use crate::renderer::contexts::device_ctx::queue::Queue;
+use crate::renderer::contexts::device_ctx::command_encoder::CommandEncoder;
+use crate::renderer::contexts::device_ctx::queue::{Queue, QueueFamily};
 
-/// Each CommandBufferAllocator is associated with a single queue
-pub struct CommandBufferAllocator {
-    command_pool: vk::CommandPool,
-    command_buffers: Vec<vk::CommandBuffer>,
+type CommandEncoderAllocatorHandle = Arc<Mutex<CommandEncoderAllocator>>;
 
+pub struct CommandEncoderAllocator {
+    command_pools: HashMap<QueueFamily, vk::CommandPool>,
+    allocated_command_buffers: HashMap<QueueFamily, Vec<vk::CommandBuffer>>,
     device: Arc<ash::Device>,
-    queue: Arc<Queue>,
 }
 
-impl CommandBufferAllocator {
+impl CommandEncoderAllocator {
     pub fn new(
         device: Arc<ash::Device>,
-        queue: Arc<Queue>,
     ) -> Result<Self> {
-        let command_pool_info = vk::CommandPoolCreateInfo::default()
-            .queue_family_index(queue.family.index)
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
-        let command_pool = unsafe {
-            device.create_command_pool(&command_pool_info, None)?
-        };
-
         Ok(Self {
-            command_pool,
-            command_buffers: Vec::new(),
+            command_pools: HashMap::new(),
+            allocated_command_buffers: HashMap::new(),
             device,
-            queue,
         })
     }
 
-    pub fn allocate(&mut self) -> Result<vk::CommandBuffer> {
+    pub fn allocate(&mut self, queue: Arc<Queue>) -> Result<CommandEncoder> {
+        let command_pool = self
+            .command_pools
+            .entry(queue.family.clone())
+            .or_insert_with(|| {
+                let command_pool_info = vk::CommandPoolCreateInfo::default()
+                    .queue_family_index(queue.family.index)
+                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+                unsafe {
+                    self.device.create_command_pool(&command_pool_info, None)?
+                }
+            });
+
         let command_buffer_info = vk::CommandBufferAllocateInfo::default()
-            .command_pool(self.command_pool)
+            .command_pool(*command_pool)
             .command_buffer_count(1)
             .level(vk::CommandBufferLevel::PRIMARY);
         let command_buffer = unsafe {
             self.device.allocate_command_buffers(&command_buffer_info)?[0]
         };
 
-        self.command_buffers.push(command_buffer);
-        Ok(command_buffer)
+        self.allocated_command_buffers
+            .entry(queue.family.clone())
+            .or_insert_with(Vec::new)
+            .push(command_buffer);
+
+        let command_encoder = CommandEncoder::new(
+            command_buffer,
+            queue,
+            self.device.clone(),
+            self.clone(),
+        );
+
+        Ok(command_encoder)
+    }
+
+    pub fn free(&mut self, command_encoder: &CommandEncoder) -> Result<()> {
+        let command_pool = self.command_pools.get(&command_encoder.queue.family).unwrap();
+        let command_buffer = command_encoder.command_buffer;
+        unsafe {
+            self.device.free_command_buffers(*command_pool, &[command_buffer]);
+        }
+        let mut command_buffers = self.allocated_command_buffers
+            .get(&command_encoder.queue.family)
+            .ok_or_eyre(format!("Failed to get command buffers for queue family: {}", command_encoder.queue.family.index))?;
+        let index = command_buffers
+            .iter()
+            .position(|&cb| cb == command_buffer)
+            .ok_or_eyre(format!("Failed to find command buffer in vec for queue family: {}", command_encoder.queue.family.index))?;
+        let _ = command_buffers.swap_remove(index);
+        Ok(())
     }
 }
 
-impl Drop for CommandBufferAllocator {
+impl Drop for CommandEncoderAllocator {
     fn drop(&mut self) {
-        unsafe {
-            if self.command_buffers.len() > 0 {
-                self.device.free_command_buffers(self.command_pool, &self.command_buffers);
+        for (queue_family, command_pool) in self.command_pools.drain() {
+            let command_buffers = self.allocated_command_buffers.remove(&queue_family).unwrap();
+            unsafe {
+                self.device.free_command_buffers(command_pool, &command_buffers);
             }
-            self.device.destroy_command_pool(self.command_pool, None);
+            unsafe {
+                self.device.destroy_command_pool(*command_pool, None);
+            }
         }
     }
 }

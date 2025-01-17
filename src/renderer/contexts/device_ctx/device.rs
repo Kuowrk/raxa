@@ -7,7 +7,7 @@ use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::{CreatePoolError, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::resources::megabuffer::Megabuffer;
-use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandBufferAllocator;
+use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandEncoderAllocator;
 use crate::renderer::contexts::device_ctx::instance::RenderInstance;
 use crate::renderer::contexts::device_ctx::queue::{Queue, QueueFamily};
 use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
@@ -23,7 +23,7 @@ pub struct RenderDevice {
     pub transfer_queue: Arc<Queue>,
 
     memory_allocator: Arc<Mutex<Allocator>>,
-    command_buffer_allocator: CommandBufferAllocator,
+    command_buffer_allocator: CommandEncoderAllocator,
 
     transfer_context: Arc<TransferContext>,
 }
@@ -77,7 +77,7 @@ impl RenderDevice {
         let compute_queue = Arc::new(compute_queue);
         let transfer_queue = Arc::new(transfer_queue);
 
-        let command_buffer_allocator = CommandBufferAllocator::new(
+        let command_buffer_allocator = CommandEncoderAllocator::new(
             logical_device.clone(),
             graphics_queue.clone(),
         )?;

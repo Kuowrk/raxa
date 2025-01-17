@@ -1,3 +1,4 @@
+use std::hash::Hash;
 use ash::vk;
 
 pub struct Queue {
@@ -17,6 +18,7 @@ impl Queue {
     }
 }
 
+#[derive(Clone)]
 pub struct QueueFamily {
     pub index: u32,
     pub properties: vk::QueueFamilyProperties,
@@ -60,5 +62,13 @@ impl QueueFamily {
 impl PartialEq for QueueFamily {
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index
+    }
+}
+
+impl Eq for QueueFamily {}
+
+impl Hash for QueueFamily {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.index.hash(state);
     }
 }
