@@ -134,7 +134,7 @@ impl RenderResourceAllocator {
                 .ok_or_eyre("Failed to allocate bindless descriptor set")?
         };
 
-        let bindless_pipeline_layout = Self::create_pipeline_layout(
+        let bindless_pipeline_layout = Self::create_bindless_pipeline_layout(
             bindless_descriptor_set_layout,
             &device.logical,
         )?;
@@ -147,7 +147,7 @@ impl RenderResourceAllocator {
         })
     }
 
-    fn create_pipeline_layout(
+    fn create_bindless_pipeline_layout(
         bindless_descriptor_set_layout: vk::DescriptorSetLayout,
         device: &ash::Device,
     ) -> Result<vk::PipelineLayout> {

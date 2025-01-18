@@ -6,7 +6,7 @@ use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::{CreatePoolError, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
-use crate::renderer::resources::megabuffer::Megabuffer;
+use crate::renderer::resources::megabuffer::{Megabuffer, MegabufferExt};
 use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandEncoderAllocator;
 use crate::renderer::contexts::device_ctx::instance::RenderInstance;
 use crate::renderer::contexts::device_ctx::queue::{Queue, QueueFamily};
@@ -23,7 +23,7 @@ pub struct RenderDevice {
     pub transfer_queue: Arc<Queue>,
 
     memory_allocator: Arc<Mutex<Allocator>>,
-    command_buffer_allocator: CommandEncoderAllocator,
+    command_encoder_allocator: CommandEncoderAllocator,
 
     transfer_context: Arc<TransferContext>,
 }
@@ -77,9 +77,8 @@ impl RenderDevice {
         let compute_queue = Arc::new(compute_queue);
         let transfer_queue = Arc::new(transfer_queue);
 
-        let command_buffer_allocator = CommandEncoderAllocator::new(
+        let command_encoder_allocator = CommandEncoderAllocator::new(
             logical_device.clone(),
-            graphics_queue.clone(),
         )?;
 
         let transfer_context = TransferContext::new(
@@ -96,7 +95,7 @@ impl RenderDevice {
             transfer_queue,
 
             memory_allocator: Arc::new(Mutex::new(memory_allocator)),
-            command_buffer_allocator,
+            command_encoder_allocator,
 
             transfer_context: Arc::new(transfer_context),
         };
@@ -119,7 +118,7 @@ impl RenderDevice {
         size: u64,
         usage: vk::BufferUsageFlags,
         alignment: u64,
-    ) -> Result<Arc<Mutex<Megabuffer>>> {
+    ) -> Result<Megabuffer> {
         Megabuffer::new(
             size,
             usage,

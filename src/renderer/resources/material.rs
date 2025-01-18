@@ -5,11 +5,14 @@ use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Result;
 use crate::renderer::resources::shader::{ComputeShader, GraphicsShader};
 use crate::renderer::resources::vertex::VertexInputDescription;
-pub struct Material {
-    pipeline: vk::Pipeline,
-    pipeline_layout: vk::PipelineLayout,
-    pipeline_bind_point: vk::PipelineBindPoint,
-    device: Arc<ash::Device>,
+
+pub struct Material<'a> {
+    pipeline: &'a vk::Pipeline,
+    pipeline_layout: &'a vk::PipelineLayout,
+    pipeline_bind_point: &'a vk::PipelineBindPoint,
+    descriptor_sets: Vec<vk::DescriptorSet>,
+
+    device: &'a ash::Device,
 }
 
 impl Material {
@@ -22,7 +25,7 @@ impl Material {
         unsafe {
             self.device.cmd_push_constants(
                 command_buffer,
-                self.pipeline_layout,
+                *self.pipeline_layout,
                 stage_flags,
                 0,
                 data,
@@ -34,8 +37,8 @@ impl Material {
         unsafe {
             self.device.cmd_bind_pipeline(
                 command_buffer,
-                self.pipeline_bind_point,
-                self.pipeline,
+                *self.pipeline_bind_point,
+                *self.pipeline,
             );
         }
     }
@@ -49,8 +52,8 @@ impl Material {
         unsafe {
             self.device.cmd_bind_descriptor_sets(
                 command_buffer,
-                self.pipeline_bind_point,
-                self.pipeline_layout,
+                *self.pipeline_bind_point,
+                *self.pipeline_layout,
                 first_set,
                 descriptor_sets,
                 &[],
@@ -59,7 +62,27 @@ impl Material {
     }
 }
 
-pub struct GraphicsMaterialBuilder<'a> {
+pub struct MaterialFactory {
+    pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
+    pipeline_bind_point: vk::PipelineBindPoint,
+
+    device: Arc<ash::Device>,
+}
+
+impl MaterialFactory {
+    pub fn create_material(&self, descriptor_sets: Vec<vk::DescriptorSet>) -> Material {
+        Material {
+            pipeline: &self.pipeline,
+            pipeline_layout: &self.pipeline_layout,
+            pipeline_bind_point: &self.pipeline_bind_point,
+            descriptor_sets,
+            device: &self.device,
+        }
+    }
+}
+
+pub struct GraphicsMaterialFactoryBuilder<'a> {
     device: Arc<ash::Device>,
 
     vertex_input_description: VertexInputDescription,
@@ -75,8 +98,8 @@ pub struct GraphicsMaterialBuilder<'a> {
     pipeline_layout: Option<vk::PipelineLayout>,
 }
 
-impl<'a> GraphicsMaterialBuilder<'a> {
-    fn new(device: Arc<ash::Device>) -> Self {
+impl<'a> GraphicsMaterialFactoryBuilder<'a> {
+    pub fn new(device: Arc<ash::Device>) -> Self {
         let vertex_input_desc = VertexInputDescription::default();
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_attribute_descriptions(&vertex_input_desc.attributes)
@@ -234,7 +257,7 @@ impl<'a> GraphicsMaterialBuilder<'a> {
         self
     }
 
-    pub fn build(mut self) -> Result<Material> {
+    pub fn build(mut self) -> Result<MaterialFactory> {
         let device = self.device;
 
         let shader = self
@@ -301,7 +324,7 @@ impl<'a> GraphicsMaterialBuilder<'a> {
             }
         }?[0];
 
-        Ok(Material {
+        Ok(MaterialFactory {
             pipeline,
             pipeline_layout,
             pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
@@ -369,13 +392,13 @@ impl<'a> GraphicsMaterialBuilder<'a> {
     }
 }
 
-pub struct ComputeMaterialBuilder<'a> {
+pub struct ComputeMaterialFactoryBuilder<'a> {
     device: Arc<ash::Device>,
     shader: Option<ComputeShader>,
     pipeline_layout: Option<vk::PipelineLayout>,
 }
 
-impl<'a> ComputeMaterialBuilder<'a> {
+impl<'a> ComputeMaterialFactoryBuilder<'a> {
     pub fn new(device: Arc<ash::Device>) -> Self {
         Self {
             device,
@@ -394,7 +417,7 @@ impl<'a> ComputeMaterialBuilder<'a> {
         self
     }
 
-    pub fn build(mut self) -> Result<Material> {
+    pub fn build(mut self) -> Result<MaterialFactory> {
         let shader = self
             .shader
             .take()
@@ -423,7 +446,7 @@ impl<'a> ComputeMaterialBuilder<'a> {
             }
         }?[0];
 
-        Ok(Material {
+        Ok(MaterialFactory {
             pipeline,
             pipeline_layout,
             pipeline_bind_point: vk::PipelineBindPoint::COMPUTE,

@@ -7,7 +7,8 @@ use gpu_allocator::vulkan::Allocator;
 use gpu_allocator::MemoryLocation;
 use std::sync::{Arc, Mutex};
 
-pub type MegabufferHandle = Arc<Mutex<Megabuffer>>;
+#[repr(transparent)]
+pub struct Megabuffer(Arc<Mutex<MegabufferInner>>);
 
 pub struct FreeMegabufferRegion {
     offset: u64,
@@ -17,7 +18,7 @@ pub struct FreeMegabufferRegion {
 pub struct AllocatedMegabufferRegion {
     offset: u64,
     size: u64,
-    megabuffer: MegabufferHandle,
+    megabuffer: Megabuffer,
 }
 
 impl AllocatedMegabufferRegion {
@@ -29,7 +30,7 @@ impl AllocatedMegabufferRegion {
     }
 }
 
-pub struct Megabuffer {
+struct MegabufferInner {
     buffer: Buffer,
     staging_buffer: Buffer,
     free_regions: Vec<FreeMegabufferRegion>,
@@ -40,6 +41,14 @@ pub struct Megabuffer {
 }
 
 pub trait MegabufferExt {
+    fn new(
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        alignment: u64,
+        memory_allocator: Arc<Mutex<Allocator>>,
+        device: Arc<ash::Device>,
+        transfer_context: Arc<TransferContext>,
+    ) -> Result<Self>;
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion>;
     fn deallocate_region(&self, region: AllocatedMegabufferRegion) -> Result<()>;
     fn defragment(&self) -> Result<()>;
@@ -53,7 +62,47 @@ pub trait MegabufferExt {
         T: Copy;
 }
 
-impl MegabufferExt for MegabufferHandle {
+impl MegabufferExt for Megabuffer {
+    fn new(
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        alignment: u64,
+        memory_allocator: Arc<Mutex<Allocator>>,
+        device: Arc<ash::Device>,
+        transfer_context: Arc<TransferContext>,
+    ) -> Result<Megabuffer> {
+        let mem_loc = MemoryLocation::GpuOnly;
+        let buffer = Buffer::new(
+            size,
+            usage,
+            "Buffer Allocator Buffer Allocation",
+            mem_loc,
+            memory_allocator.clone(),
+            device.clone(),
+        )?;
+
+        let staging_buffer = Buffer::new(
+            size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            "Buffer Allocator Staging Buffer Allocation",
+            MemoryLocation::CpuToGpu,
+            memory_allocator,
+            device,
+        )?;
+
+        Ok(Megabuffer(Arc::new(Mutex::new(MegabufferInner {
+            buffer,
+            staging_buffer,
+            free_regions: vec![FreeMegabufferRegion {
+                offset: 0,
+                size,
+            }],
+            mem_loc,
+            alignment,
+            transfer_context,
+        }))))
+    }
+
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion> {
         let mut guard = self
             .lock()
@@ -192,47 +241,7 @@ impl MegabufferExt for MegabufferHandle {
 
 }
 
-impl Megabuffer {
-    pub fn new(
-        size: u64,
-        usage: vk::BufferUsageFlags,
-        alignment: u64,
-        memory_allocator: Arc<Mutex<Allocator>>,
-        device: Arc<ash::Device>,
-        transfer_context: Arc<TransferContext>,
-    ) -> Result<MegabufferHandle> {
-        let mem_loc = MemoryLocation::GpuOnly;
-        let buffer = Buffer::new(
-            size,
-            usage,
-            "Buffer Allocator Buffer Allocation",
-            mem_loc,
-            memory_allocator.clone(),
-            device.clone(),
-        )?;
-
-        let staging_buffer = Buffer::new(
-            size,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            "Buffer Allocator Staging Buffer Allocation",
-            MemoryLocation::CpuToGpu,
-            memory_allocator,
-            device,
-        )?;
-
-        Ok(Arc::new(Mutex::new(Self {
-            buffer,
-            staging_buffer,
-            free_regions: vec![FreeMegabufferRegion {
-                offset: 0,
-                size,
-            }],
-            mem_loc,
-            alignment,
-            transfer_context,
-        })))
-    }
-
+impl MegabufferInner {
     fn aligned_size(&self, size: u64) -> u64 {
         (size + self.alignment - 1) & !(self.alignment - 1)
     }
