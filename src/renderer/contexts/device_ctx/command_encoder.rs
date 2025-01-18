@@ -4,6 +4,7 @@ use ash::vk;
 use color_eyre::eyre::eyre;
 use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandEncoderAllocator;
 use crate::renderer::contexts::device_ctx::queue::Queue;
+use crate::renderer::resources::image::Image;
 
 pub struct CommandEncoder {
     pub command_buffer: vk::CommandBuffer,
@@ -30,6 +31,7 @@ impl CommandEncoder {
             is_recording: false,
         }
     }
+
 
     pub fn begin_recording(&mut self) -> Result<()> {
         if self.is_recording {
@@ -59,6 +61,30 @@ impl CommandEncoder {
         self.is_recording = false;
 
         Ok(())
+    }
+
+    pub fn transition_image_layout(
+        &self,
+        image: &mut Image,
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+    ) {
+        image.transition_layout(
+            *self.command_buffer,
+            old_layout,
+            new_layout,
+        )
+    }
+
+    pub fn copy_image_to_image(
+        &self,
+        src_image: &Image,
+        dst_image: &Image,
+    ) {
+        src_image.copy_to_image(
+            *self.command_buffer,
+            dst_image,
+        )
     }
 }
 

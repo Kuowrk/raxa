@@ -8,3 +8,5 @@ pub mod buffer;
 pub mod image;
 pub mod megabuffer;
 pub mod texture;
+mod material;
+mod shader;

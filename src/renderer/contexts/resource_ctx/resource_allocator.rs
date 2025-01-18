@@ -83,7 +83,6 @@ pub struct RenderResourceAllocator {
     bindless_descriptor_set_layout: vk::DescriptorSetLayout,
     bindless_descriptor_set: gpu_descriptor::DescriptorSet<vk::DescriptorSet>,
     bindless_pipeline_layout: vk::PipelineLayout,
-
     descriptor_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>,
 }
 
