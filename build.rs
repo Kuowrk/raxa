@@ -7,6 +7,8 @@ use naga::{
     back::spv, front::wgsl,
     valid::{Capabilities, ValidationFlags, Validator}
 };
+use shaderc::CompilationArtifact;
+use shaderc::ShaderKind;
 use std::{env, fs, path::Path};
 
 fn main() -> Result<()> {
@@ -34,14 +36,14 @@ fn compile_shaders() -> Result<()> {
         let ext = path
             .extension()
             .and_then(|ext| ext.to_str())
-            .ok_or_eyre(format!("Shader file has no extension: {:?}", path))?;
+            .ok_or_eyre(format!("Shader file has no extension: {:#?}", path))?;
 
         let shader_lang = match ext {
             "vert" => ShaderLanguage::Glsl,
             "frag" => ShaderLanguage::Glsl,
             "comp" => ShaderLanguage::Glsl,
             "wgsl" => ShaderLanguage::Wgsl,
-            _ => return Err(eyre!("Shader language not recognized for file: {:?}", path)),
+            _ => return Err(eyre!("Shader language not recognized for file: {:#?}", path)),
         };
 
         let spv_binary = match shader_lang {
@@ -51,7 +53,7 @@ fn compile_shaders() -> Result<()> {
         
         // Write the SPIR-V binary to a file
         let shader_name = path
-            .file_stem()
+            .file_name()
             .ok_or_eyre("Shader file has no name")?
             .to_str()
             .ok_or_eyre("Shader file name is not valid UTF-8")?;
@@ -65,18 +67,40 @@ fn compile_shaders() -> Result<()> {
 }
 
 fn compile_glsl(filepath: &Path) -> Result<Vec<u32>> {
-    Err(eyre!("GLSL not supported yet"))
-    /*
-    let shader_stage = match ext {
-        "vert" => ShaderStage::Vertex,
-        "frag" => ShaderStage::Fragment,
-        "comp" => ShaderStage::Compute,
+    let compiler = shaderc::Compiler::new()
+        .ok_or_eyre("Failed to create shaderc compiler")?;
+    let options = shaderc::CompileOptions::new()
+        .ok_or_eyre("Failed to create shaderc compile options")?;
+    
+    let ext = filepath
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .ok_or_eyre(format!("Shader file has no extension: {:#?}", filepath))?;
+
+    let shader_kind = match ext {
+        "vert" => ShaderKind::Vertex,
+        "frag" => ShaderKind::Fragment,
+        "comp" => ShaderKind::Compute,
         _ => {
-            log::warn!("Skipping non-GLSL file: {:?}", path);
-            return;
+            return Err(eyre!("Shader kind not recognized for GLSL file: {:#?}", filepath));
         }
     };
-    */
+
+    let source = fs::read_to_string(&filepath)?;
+    let filename = filepath
+        .file_name()
+        .ok_or_eyre(format!("No filename for filepath: {:#?}", filepath))?
+        .to_str()
+        .ok_or_eyre("Could not convert &OsStr to &str")?;
+    let artifact = compiler.compile_into_spirv(
+        &source,
+        shader_kind,
+        filename,
+        "main",
+        Some(&options),
+    )?;
+
+    Ok(artifact.as_binary().to_vec())
 }
 
 fn compile_wgsl(filepath: &Path) -> Result<Vec<u32>> {
@@ -87,7 +111,7 @@ fn compile_wgsl(filepath: &Path) -> Result<Vec<u32>> {
     // Validate the IR
     let mut validator = Validator::new(ValidationFlags::all(), Capabilities::all());
     let validation_info = validator.validate(&module)?;
-    log::info!("{:?}", validation_info);
+    log::info!("{:#?}", validation_info);
 
     // Generate the SPIR-V binary
     Ok(spv::write_vec(&module, &validation_info, &spv::Options::default(), None)?)
