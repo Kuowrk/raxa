@@ -11,6 +11,12 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
+[build-dependencies]
+bytemuck = "1.21.0"
+color-eyre = "0.6.3"
+naga = { version = "23.1.0", features = ["glsl-in", "spv-out"] }
+log = "0.4.22"
+
 [dependencies]
 ash = { version = "0.38.0", features = ["linked"] }
 ash-window = "0.13.0"

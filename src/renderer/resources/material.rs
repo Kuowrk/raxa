@@ -15,7 +15,7 @@ pub struct Material<'a> {
     device: &'a ash::Device,
 }
 
-impl Material {
+impl Material<'_> {
     pub fn update_push_constants(
         &self,
         command_buffer: vk::CommandBuffer,
@@ -86,7 +86,6 @@ pub struct GraphicsMaterialFactoryBuilder<'a> {
     device: Arc<ash::Device>,
 
     vertex_input_description: VertexInputDescription,
-    vertex_input: vk::PipelineVertexInputStateCreateInfo<'a>,
     input_assembly: vk::PipelineInputAssemblyStateCreateInfo<'a>,
     rasterization: vk::PipelineRasterizationStateCreateInfo<'a>,
     color_blend_attachment: vk::PipelineColorBlendAttachmentState,
@@ -100,11 +99,7 @@ pub struct GraphicsMaterialFactoryBuilder<'a> {
 
 impl<'a> GraphicsMaterialFactoryBuilder<'a> {
     pub fn new(device: Arc<ash::Device>) -> Self {
-        let vertex_input_desc = VertexInputDescription::default();
-        let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
-            .vertex_attribute_descriptions(&vertex_input_desc.attributes)
-            .vertex_binding_descriptions(&vertex_input_desc.bindings)
-            .flags(vertex_input_desc.flags);
+        let vertex_input_description = VertexInputDescription::default();
         let input_assembly = Self::default_input_assembly_info();
         let rasterization = Self::default_rasterization_info();
         let color_blend_attachment = Self::default_color_blend_state();
@@ -119,7 +114,6 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             device,
 
             vertex_input_description,
-            vertex_input,
             input_assembly,
             rasterization,
             color_blend_attachment,
@@ -250,10 +244,6 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
 
     pub fn with_vertex_input(mut self, description: VertexInputDescription) -> Self {
         self.vertex_input_description = description;
-        self.vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
-            .vertex_attribute_descriptions(&self.vertex_input_description.attributes)
-            .vertex_binding_descriptions(&self.vertex_input_description.bindings)
-            .flags(self.vertex_input_description.flags);
         self
     }
 
@@ -300,11 +290,16 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
         let dynamic_info = vk::PipelineDynamicStateCreateInfo::default()
             .dynamic_states(&dynamic_states);
 
+        let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
+            .vertex_attribute_descriptions(&self.vertex_input_description.attributes)
+            .vertex_binding_descriptions(&self.vertex_input_description.bindings)
+            .flags(self.vertex_input_description.flags);
+        
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
             .push_next(&mut self.rendering_info)
             .stages(&shader_stages)
             .layout(pipeline_layout)
-            .vertex_input_state(&self.vertex_input)
+            .vertex_input_state(&vertex_input)
             .input_assembly_state(&self.input_assembly)
             .viewport_state(&viewport_state)
             .rasterization_state(&self.rasterization)

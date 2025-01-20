@@ -13,7 +13,7 @@ pub struct CommandEncoder {
     is_recording: bool,
 
     device: Arc<ash::Device>,
-    allocator: Arc<Mutex<CommandEncoderAllocator>>,
+    allocator: CommandEncoderAllocator,
 }
 
 impl CommandEncoder {
@@ -21,7 +21,7 @@ impl CommandEncoder {
         command_buffer: vk::CommandBuffer,
         queue: Arc<Queue>,
         device: Arc<ash::Device>,
-        allocator: Arc<Mutex<CommandEncoderAllocator>>,
+        allocator: CommandEncoderAllocator,
     ) -> Self {
         Self {
             command_buffer,
@@ -41,7 +41,7 @@ impl CommandEncoder {
         let begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe {
-            self.device.begin_command_buffer(*self.command_buffer, &begin_info)?;
+            self.device.begin_command_buffer(self.command_buffer, &begin_info)?;
         }
 
         self.is_recording = true;
@@ -55,7 +55,7 @@ impl CommandEncoder {
         }
 
         unsafe {
-            self.device.end_command_buffer(*self.command_buffer)?
+            self.device.end_command_buffer(self.command_buffer)?
         }
 
         self.is_recording = false;
@@ -70,7 +70,7 @@ impl CommandEncoder {
         new_layout: vk::ImageLayout,
     ) {
         image.transition_layout(
-            *self.command_buffer,
+            self.command_buffer,
             old_layout,
             new_layout,
         )
@@ -82,7 +82,7 @@ impl CommandEncoder {
         dst_image: &Image,
     ) {
         src_image.copy_to_image(
-            *self.command_buffer,
+            self.command_buffer,
             dst_image,
         )
     }
@@ -94,7 +94,7 @@ impl Drop for CommandEncoder {
             log::warn!("Dropping CommandEncoder while still recording");
         }
 
-        let mut allocator = self.allocator.lock().unwrap();
+        let mut allocator = self.allocator.0.lock().unwrap();
         allocator.free(self).unwrap();
     }
 }

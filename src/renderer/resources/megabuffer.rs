@@ -8,7 +8,13 @@ use gpu_allocator::MemoryLocation;
 use std::sync::{Arc, Mutex};
 
 #[repr(transparent)]
-pub struct Megabuffer(Arc<Mutex<MegabufferInner>>);
+pub struct Megabuffer(pub Arc<Mutex<MegabufferInner>>);
+
+impl Clone for Megabuffer {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 
 pub struct FreeMegabufferRegion {
     offset: u64,
@@ -40,7 +46,7 @@ struct MegabufferInner {
     transfer_context: Arc<TransferContext>,
 }
 
-pub trait MegabufferExt {
+pub trait MegabufferExt<B> {
     fn new(
         size: u64,
         usage: vk::BufferUsageFlags,
@@ -48,7 +54,7 @@ pub trait MegabufferExt {
         memory_allocator: Arc<Mutex<Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
-    ) -> Result<Self>;
+    ) -> Result<B>;
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion>;
     fn deallocate_region(&self, region: AllocatedMegabufferRegion) -> Result<()>;
     fn defragment(&self) -> Result<()>;
@@ -62,7 +68,7 @@ pub trait MegabufferExt {
         T: Copy;
 }
 
-impl MegabufferExt for Megabuffer {
+impl MegabufferExt<Megabuffer> for Megabuffer {
     fn new(
         size: u64,
         usage: vk::BufferUsageFlags,
@@ -104,7 +110,7 @@ impl MegabufferExt for Megabuffer {
     }
 
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion> {
-        let mut guard = self
+        let mut guard = self.0
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -125,7 +131,7 @@ impl MegabufferExt for Megabuffer {
     }
 
     fn deallocate_region(&self, region: AllocatedMegabufferRegion) -> Result<()> {
-        let mut guard = self
+        let mut guard = self.0
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -166,7 +172,7 @@ impl MegabufferExt for Megabuffer {
     }
 
     fn defragment(&self) -> Result<()> {
-        let mut guard = self
+        let mut guard = self.0
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -187,7 +193,7 @@ impl MegabufferExt for Megabuffer {
     }
 
     fn upload(&self) -> Result<()> {
-        let guard = self
+        let guard = self.0
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -232,13 +238,12 @@ impl MegabufferExt for Megabuffer {
             return Err(eyre!("Data too large for region"));
         }
 
-        let mut guard = self
+        let mut guard = self.0
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
         guard.staging_buffer.write(data, region.offset as usize)
     }
-
 }
 
 impl MegabufferInner {
