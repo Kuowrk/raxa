@@ -6,6 +6,14 @@ use color_eyre::Result;
 use crate::renderer::resources::shader::{ComputeShader, GraphicsShader};
 use crate::renderer::resources::vertex::VertexInputDescription;
 
+const MAX_SAMPLERS: u32 = 16;
+const MAX_SAMPLED_IMAGES: u32 = 1024;
+const UNIFORM_BUFFER_DESCRIPTOR_COUNT: u32 = 1;
+const STORAGE_BUFFER_DESCRIPTOR_COUNT: u32 = 1;
+const STORAGE_IMAGE_DESCRIPTOR_COUNT: u32 = 1;
+const SAMPLER_DESCRIPTOR_COUNT: u32 = MAX_SAMPLERS;
+const SAMPLED_IMAGE_DESCRIPTOR_COUNT: u32 = MAX_SAMPLED_IMAGES;
+
 pub struct Material<'a> {
     pipeline: &'a vk::Pipeline,
     pipeline_layout: &'a vk::PipelineLayout,
@@ -66,12 +74,15 @@ pub struct MaterialFactory {
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
     pipeline_bind_point: vk::PipelineBindPoint,
-
+    descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+    
     device: Arc<ash::Device>,
+    descriptor_allocator: Arc<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>,
 }
 
 impl MaterialFactory {
-    pub fn create_material(&self, descriptor_sets: Vec<vk::DescriptorSet>) -> Material {
+    pub fn create_material(&self) -> Material {
+        let descriptor_sets = self.allocate_descriptor_sets();
         Material {
             pipeline: &self.pipeline,
             pipeline_layout: &self.pipeline_layout,
@@ -80,11 +91,38 @@ impl MaterialFactory {
             device: &self.device,
         }
     }
+
+    fn allocate_descriptor_sets(&self) -> Vec<vk::DescriptorSet> {
+        self.descriptor_allocator
+            .allocate(
+                device,
+                &bindless_descriptor_set_layout,
+                DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND,
+                &DescriptorTotalCount {
+                    sampler: SAMPLER_DESCRIPTOR_COUNT,
+                    combined_image_sampler: 0,
+                    sampled_image: SAMPLED_IMAGE_DESCRIPTOR_COUNT,
+                    storage_image: STORAGE_IMAGE_DESCRIPTOR_COUNT,
+                    uniform_texel_buffer: 0,
+                    storage_texel_buffer: 0,
+                    uniform_buffer: UNIFORM_BUFFER_DESCRIPTOR_COUNT,
+                    storage_buffer: STORAGE_BUFFER_DESCRITPOR_COUNT,
+                    uniform_buffer_dynamic: 0,
+                    storage_buffer_dynamic: 0,
+                    input_attachment: 0,
+                    acceleration_structure: 0,
+                    inline_uniform_block_bytes: 0,
+                    inline_uniform_block_bindings: 0,
+                },
+                self.descriptor_set_layouts.len(),
+            )?
+            .drain(..)
+            .collect::<Option<Vec<_>>>()
+            .ok_or_eyre("Failed to allocate descriptor set")?
+    }
 }
 
 pub struct GraphicsMaterialFactoryBuilder<'a> {
-    device: Arc<ash::Device>,
-
     vertex_input_description: VertexInputDescription,
     input_assembly: vk::PipelineInputAssemblyStateCreateInfo<'a>,
     rasterization: vk::PipelineRasterizationStateCreateInfo<'a>,
@@ -95,10 +133,17 @@ pub struct GraphicsMaterialFactoryBuilder<'a> {
     rendering_info: vk::PipelineRenderingCreateInfo<'a>,
     shader: Option<GraphicsShader>,
     pipeline_layout: Option<vk::PipelineLayout>,
+    descriptor_set_layouts: Option<Vec<vk::DescriptorSetLayout>>,
+    
+    device: Arc<ash::Device>,
+    descriptor_allocator: Arc<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>,
 }
 
 impl<'a> GraphicsMaterialFactoryBuilder<'a> {
-    pub fn new(device: Arc<ash::Device>) -> Self {
+    pub fn new(
+        device: Arc<ash::Device>,
+        descriptor_allocator: Arc<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>,
+    ) -> Self {
         let vertex_input_description = VertexInputDescription::default();
         let input_assembly = Self::default_input_assembly_info();
         let rasterization = Self::default_rasterization_info();
@@ -109,10 +154,9 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
         let rendering_info = vk::PipelineRenderingCreateInfo::default();
         let shader = None;
         let pipeline_layout = None;
+        let descriptor_set_layouts = None;
 
         Self {
-            device,
-
             vertex_input_description,
             input_assembly,
             rasterization,
@@ -123,6 +167,10 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             rendering_info,
             shader,
             pipeline_layout,
+            descriptor_set_layouts,
+            
+            device,
+            descriptor_allocator,
         }
     }
 
@@ -133,6 +181,11 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
 
     pub fn with_pipeline_layout(mut self, layout: vk::PipelineLayout) -> Self {
         let _ = self.pipeline_layout.replace(layout);
+        self
+    }
+
+    pub fn with_descriptor_set_layouts(mut self, layouts: Vec<vk::DescriptorSetLayout>) -> Self {
+        let _ = self.descriptor_set_layouts.replace(layouts);
         self
     }
 
@@ -270,6 +323,10 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             "No pipeline layout provided for GraphicsMaterialBuilder",
         )?;
 
+        let descriptor_set_layouts = self.descriptor_set_layouts.take().ok_or_eyre(
+            "No descriptor set layouts provided for GraphicsMaterialBuilder",
+        )?;
+
         let viewport_state = vk::PipelineViewportStateCreateInfo {
             viewport_count: 1,
             scissor_count: 1,
@@ -307,7 +364,7 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&self.depth_stencil)
             .dynamic_state(&dynamic_info);
-
+        
         let pipeline = unsafe {
             match device.create_graphics_pipelines(
                 vk::PipelineCache::null(),
@@ -323,7 +380,9 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             pipeline,
             pipeline_layout,
             pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+            descriptor_set_layouts,
             device,
+            descriptor_allocator,
         })
     }
 

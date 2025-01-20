@@ -5,14 +5,14 @@ use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
-use gpu_descriptor::{CreatePoolError, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
+use gpu_descriptor::{CreatePoolError, DescriptorAllocator, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::resources::megabuffer::{Megabuffer, MegabufferExt};
 use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandEncoderAllocator;
 use crate::renderer::contexts::device_ctx::instance::RenderInstance;
 use crate::renderer::contexts::device_ctx::queue::{Queue, QueueFamily};
 use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 
-/// Main structure for the renderer that can create resource_ctx
+/// Main structure for the renderer
 pub struct RenderDevice {
     pub logical: Arc<ash::Device>,
     pub physical: vk::PhysicalDevice,
@@ -24,6 +24,7 @@ pub struct RenderDevice {
 
     memory_allocator: Arc<Mutex<Allocator>>,
     command_encoder_allocator: CommandEncoderAllocator,
+    pub descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
 
     transfer_context: Arc<TransferContext>,
 }
@@ -80,6 +81,8 @@ impl RenderDevice {
         let command_encoder_allocator = CommandEncoderAllocator::new(
             logical_device.clone(),
         )?;
+        let mut descriptor_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>
+            = DescriptorAllocator::new(1024);
 
         let transfer_context = TransferContext::new(
             transfer_queue.clone(),
@@ -96,6 +99,7 @@ impl RenderDevice {
 
             memory_allocator: Arc::new(Mutex::new(memory_allocator)),
             command_encoder_allocator,
+            descriptor_allocator: Arc::new(Mutex::new(descriptor_allocator)),
 
             transfer_context: Arc::new(transfer_context),
         };

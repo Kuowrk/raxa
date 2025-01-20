@@ -12,7 +12,6 @@ use crate::renderer::contexts::resource_ctx::resource_storage::RenderResourceSto
 /// - Allocate descriptor sets and memory for resources
 /// - Track resource lifetimes
 pub struct RenderResourceContext {
-    pub allocator: RenderResourceAllocator,
     pub storage: RenderResourceStorage,
 }
 
@@ -20,11 +19,9 @@ impl RenderResourceContext {
     pub fn new(
         dev_ctx: &RenderDeviceContext,
     ) -> Result<Self> {
-        let allocator = RenderResourceAllocator::new(dev_ctx)?;
         let storage = RenderResourceStorage::new(dev_ctx)?;
 
         Ok(Self {
-            allocator,
             storage,
         })
     }
