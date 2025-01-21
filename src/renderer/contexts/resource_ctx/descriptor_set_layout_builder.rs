@@ -1,6 +1,5 @@
 use color_eyre::Result;
 use ash::vk;
-use crate::renderer::contexts::resource_ctx::resource_allocator::RenderResourceType;
 
 pub struct DescriptorSetLayoutBuilder<'a> {
     bindings: Vec<vk::DescriptorSetLayoutBinding<'a>>,
@@ -36,21 +35,6 @@ impl DescriptorSetLayoutBuilder<'_> {
         self.binding_flags.push(binding_flags);
         self.immutable_samplers.push(immutable_samplers);
         self
-    }
-
-    pub fn add_binding_for_resource_type(
-        self,
-        binding: u32,
-        resource_type: RenderResourceType,
-    ) -> Self {
-        self.add_binding(
-            binding,
-            resource_type.descriptor_type(),
-            resource_type.descriptor_count(),
-            vk::ShaderStageFlags::ALL,
-            resource_type.descriptor_binding_flags(),
-            None,
-        )
     }
 
     pub fn build(

@@ -1,10 +1,9 @@
-pub mod resource_allocator;
-pub mod resource_storage;
 pub mod descriptor_set_layout_builder;
+pub mod resource_storage;
+pub mod resource_type;
 
 use color_eyre::Result;
 use crate::renderer::contexts::device_ctx::RenderDeviceContext;
-use crate::renderer::contexts::resource_ctx::resource_allocator::RenderResourceAllocator;
 use crate::renderer::contexts::resource_ctx::resource_storage::RenderResourceStorage;
 
 /// Responsibilities:

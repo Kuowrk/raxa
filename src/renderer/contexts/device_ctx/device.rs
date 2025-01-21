@@ -7,7 +7,7 @@ use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::{CreatePoolError, DescriptorAllocator, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::resources::megabuffer::{Megabuffer, MegabufferExt};
-use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandEncoderAllocator;
+use crate::renderer::contexts::device_ctx::command_buffer_allocator::{CommandEncoderAllocator, CommandEncoderAllocatorExt};
 use crate::renderer::contexts::device_ctx::instance::RenderInstance;
 use crate::renderer::contexts::device_ctx::queue::{Queue, QueueFamily};
 use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
@@ -395,8 +395,16 @@ impl RequiredDeviceFeatures<'_> {
     }
 }
 
+pub struct DescriptorAshDevice<'a>(pub &'a ash::Device);
+
+impl<'a> From<&'a ash::Device> for DescriptorAshDevice<'a> {
+    fn from(device: &'a ash::Device) -> Self {
+        Self(device)
+    }
+}
+
 impl DescriptorDevice<vk::DescriptorSetLayout, vk::DescriptorPool, vk::DescriptorSet>
-for RenderDevice
+for DescriptorAshDevice
 {
     unsafe fn create_descriptor_pool(
         &self,

@@ -1,24 +1,19 @@
-use std::ffi::CString;
-use std::sync::Arc;
+use crate::renderer::contexts::device_ctx::device::DescriptorAshDevice;
+use crate::renderer::resources::shader::{ComputeShader, GraphicsShader};
+use crate::renderer::resources::vertex::VertexInputDescription;
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Result;
-use crate::renderer::resources::shader::{ComputeShader, GraphicsShader};
-use crate::renderer::resources::vertex::VertexInputDescription;
-
-const MAX_SAMPLERS: u32 = 16;
-const MAX_SAMPLED_IMAGES: u32 = 1024;
-const UNIFORM_BUFFER_DESCRIPTOR_COUNT: u32 = 1;
-const STORAGE_BUFFER_DESCRIPTOR_COUNT: u32 = 1;
-const STORAGE_IMAGE_DESCRIPTOR_COUNT: u32 = 1;
-const SAMPLER_DESCRIPTOR_COUNT: u32 = MAX_SAMPLERS;
-const SAMPLED_IMAGE_DESCRIPTOR_COUNT: u32 = MAX_SAMPLED_IMAGES;
+use gpu_descriptor::{DescriptorAllocator, DescriptorSetLayoutCreateFlags, DescriptorTotalCount};
+use std::ffi::CString;
+use std::sync::{Arc, Mutex};
+use crate::renderer::contexts::resource_ctx::resource_type::RenderResourceType;
 
 pub struct Material<'a> {
     pipeline: &'a vk::Pipeline,
     pipeline_layout: &'a vk::PipelineLayout,
     pipeline_bind_point: &'a vk::PipelineBindPoint,
-    descriptor_sets: Vec<vk::DescriptorSet>,
+    descriptor_set: gpu_descriptor::DescriptorSet<vk::DescriptorSet>,
 
     device: &'a ash::Device,
 }
@@ -27,21 +22,23 @@ impl Material<'_> {
     pub fn update_push_constants(
         &self,
         command_buffer: vk::CommandBuffer,
-        stage_flags: vk::ShaderStageFlags,
         data: &[u8],
     ) {
         unsafe {
             self.device.cmd_push_constants(
                 command_buffer,
                 *self.pipeline_layout,
-                stage_flags,
+                vk::ShaderStageFlags::ALL,
                 0,
                 data,
             );
         }
     }
 
-    pub fn bind_pipeline(&self, command_buffer: vk::CommandBuffer) {
+    pub fn bind_pipeline(
+        &self,
+        command_buffer: vk::CommandBuffer,
+    ) {
         unsafe {
             self.device.cmd_bind_pipeline(
                 command_buffer,
@@ -54,16 +51,15 @@ impl Material<'_> {
     pub fn bind_descriptor_sets(
         &self,
         command_buffer: vk::CommandBuffer,
-        first_set: u32,
-        descriptor_sets: &[vk::DescriptorSet],
     ) {
+        let descriptor_sets = [*self.descriptor_set.raw()];
         unsafe {
             self.device.cmd_bind_descriptor_sets(
                 command_buffer,
                 *self.pipeline_bind_point,
                 *self.pipeline_layout,
-                first_set,
-                descriptor_sets,
+                0,
+                &descriptor_sets,
                 &[],
             );
         }
@@ -74,51 +70,55 @@ pub struct MaterialFactory {
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
     pipeline_bind_point: vk::PipelineBindPoint,
-    descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+    descriptor_set_layout: vk::DescriptorSetLayout,
     
     device: Arc<ash::Device>,
-    descriptor_allocator: Arc<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>,
+    descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
 }
 
 impl MaterialFactory {
-    pub fn create_material(&self) -> Material {
-        let descriptor_sets = self.allocate_descriptor_sets();
-        Material {
+    pub fn create_material(&mut self) -> Result<Material> {
+        let descriptor_set = self.allocate_descriptor_sets()?;
+        Ok(Material {
             pipeline: &self.pipeline,
             pipeline_layout: &self.pipeline_layout,
             pipeline_bind_point: &self.pipeline_bind_point,
-            descriptor_sets,
+            descriptor_set,
             device: &self.device,
-        }
+        })
     }
 
-    fn allocate_descriptor_sets(&self) -> Vec<vk::DescriptorSet> {
-        self.descriptor_allocator
-            .allocate(
-                device,
-                &bindless_descriptor_set_layout,
-                DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND,
-                &DescriptorTotalCount {
-                    sampler: SAMPLER_DESCRIPTOR_COUNT,
-                    combined_image_sampler: 0,
-                    sampled_image: SAMPLED_IMAGE_DESCRIPTOR_COUNT,
-                    storage_image: STORAGE_IMAGE_DESCRIPTOR_COUNT,
-                    uniform_texel_buffer: 0,
-                    storage_texel_buffer: 0,
-                    uniform_buffer: UNIFORM_BUFFER_DESCRIPTOR_COUNT,
-                    storage_buffer: STORAGE_BUFFER_DESCRITPOR_COUNT,
-                    uniform_buffer_dynamic: 0,
-                    storage_buffer_dynamic: 0,
-                    input_attachment: 0,
-                    acceleration_structure: 0,
-                    inline_uniform_block_bytes: 0,
-                    inline_uniform_block_bindings: 0,
-                },
-                self.descriptor_set_layouts.len(),
-            )?
-            .drain(..)
-            .collect::<Option<Vec<_>>>()
-            .ok_or_eyre("Failed to allocate descriptor set")?
+    fn allocate_descriptor_sets(&mut self) -> Result<gpu_descriptor::DescriptorSet<vk::DescriptorSet>> {
+        unsafe {
+            self.descriptor_allocator
+                .lock()
+                .map_err(|e| eyre!(e.to_string()))?
+                .allocate(
+                    &DescriptorAshDevice::from(&self.device),
+                    &self.descriptor_set_layout,
+                    DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND,
+                    &DescriptorTotalCount {
+                        sampler: RenderResourceType::Sampler.descriptor_count(),
+                        combined_image_sampler: 0,
+                        sampled_image: RenderResourceType::SampledImage.descriptor_count(),
+                        storage_image: RenderResourceType::StorageImage.descriptor_count(),
+                        uniform_texel_buffer: 0,
+                        storage_texel_buffer: 0,
+                        uniform_buffer: RenderResourceType::UniformBuffer.descriptor_count(),
+                        storage_buffer: RenderResourceType::StorageBuffer.descriptor_count(),
+                        uniform_buffer_dynamic: 0,
+                        storage_buffer_dynamic: 0,
+                        input_attachment: 0,
+                        acceleration_structure: 0,
+                        inline_uniform_block_bytes: 0,
+                        inline_uniform_block_bindings: 0,
+                    },
+                    1,
+                )?
+                .drain(..)
+                .next()
+                .ok_or_eyre("Failed to allocate descriptor set")
+        }
     }
 }
 
@@ -133,16 +133,16 @@ pub struct GraphicsMaterialFactoryBuilder<'a> {
     rendering_info: vk::PipelineRenderingCreateInfo<'a>,
     shader: Option<GraphicsShader>,
     pipeline_layout: Option<vk::PipelineLayout>,
-    descriptor_set_layouts: Option<Vec<vk::DescriptorSetLayout>>,
+    descriptor_set_layout: Option<vk::DescriptorSetLayout>,
     
     device: Arc<ash::Device>,
-    descriptor_allocator: Arc<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>,
+    descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
 }
 
 impl<'a> GraphicsMaterialFactoryBuilder<'a> {
     pub fn new(
         device: Arc<ash::Device>,
-        descriptor_allocator: Arc<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>,
+        descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
     ) -> Self {
         let vertex_input_description = VertexInputDescription::default();
         let input_assembly = Self::default_input_assembly_info();
@@ -154,7 +154,7 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
         let rendering_info = vk::PipelineRenderingCreateInfo::default();
         let shader = None;
         let pipeline_layout = None;
-        let descriptor_set_layouts = None;
+        let descriptor_set_layout = None;
 
         Self {
             vertex_input_description,
@@ -167,7 +167,7 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             rendering_info,
             shader,
             pipeline_layout,
-            descriptor_set_layouts,
+            descriptor_set_layout,
             
             device,
             descriptor_allocator,
@@ -184,8 +184,8 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
         self
     }
 
-    pub fn with_descriptor_set_layouts(mut self, layouts: Vec<vk::DescriptorSetLayout>) -> Self {
-        let _ = self.descriptor_set_layouts.replace(layouts);
+    pub fn with_descriptor_set_layout(mut self, layout: vk::DescriptorSetLayout) -> Self {
+        let _ = self.descriptor_set_layout.replace(layout);
         self
     }
 
@@ -323,8 +323,8 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             "No pipeline layout provided for GraphicsMaterialBuilder",
         )?;
 
-        let descriptor_set_layouts = self.descriptor_set_layouts.take().ok_or_eyre(
-            "No descriptor set layouts provided for GraphicsMaterialBuilder",
+        let descriptor_set_layout = self.descriptor_set_layout.take().ok_or_eyre(
+            "No descriptor set layout provided for GraphicsMaterialBuilder",
         )?;
 
         let viewport_state = vk::PipelineViewportStateCreateInfo {
@@ -380,9 +380,9 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             pipeline,
             pipeline_layout,
             pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
-            descriptor_set_layouts,
+            descriptor_set_layout,
             device,
-            descriptor_allocator,
+            descriptor_allocator: self.descriptor_allocator,
         })
     }
 
@@ -447,17 +447,25 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
 }
 
 pub struct ComputeMaterialFactoryBuilder<'a> {
-    device: Arc<ash::Device>,
     shader: Option<ComputeShader>,
     pipeline_layout: Option<vk::PipelineLayout>,
+    descriptor_set_layout: Option<vk::DescriptorSetLayout>,
+
+    device: Arc<ash::Device>,
+    descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
 }
 
 impl<'a> ComputeMaterialFactoryBuilder<'a> {
-    pub fn new(device: Arc<ash::Device>) -> Self {
+    pub fn new(
+        device: Arc<ash::Device>,
+        descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
+    ) -> Self {
         Self {
-            device,
             shader: None,
             pipeline_layout: None,
+            descriptor_set_layout: None,
+            device,
+            descriptor_allocator,
         }
     }
 
@@ -471,6 +479,11 @@ impl<'a> ComputeMaterialFactoryBuilder<'a> {
         self
     }
 
+    pub fn with_descriptor_set_layout(mut self, layout: vk::DescriptorSetLayout) -> Self {
+        let _ = self.descriptor_set_layout.replace(layout);
+        self
+    }
+
     pub fn build(mut self) -> Result<MaterialFactory> {
         let shader = self
             .shader
@@ -478,6 +491,10 @@ impl<'a> ComputeMaterialFactoryBuilder<'a> {
             .ok_or_eyre("No shader provided for ComputeMaterialBuilder")?;
         let pipeline_layout = self.pipeline_layout.take().ok_or_eyre(
             "No pipeline layout provided for ComputeMaterialBuilder",
+        )?;
+
+        let descriptor_set_layout = self.descriptor_set_layout.take().ok_or_eyre(
+            "No descriptor set layout provided for GraphicsMaterialBuilder",
         )?;
 
         let name = CString::new("main")?;
@@ -504,7 +521,9 @@ impl<'a> ComputeMaterialFactoryBuilder<'a> {
             pipeline,
             pipeline_layout,
             pipeline_bind_point: vk::PipelineBindPoint::COMPUTE,
+            descriptor_set_layout,
             device: self.device,
+            descriptor_allocator: self.descriptor_allocator,
         })
     }
 }
