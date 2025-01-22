@@ -5,14 +5,23 @@ use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 use gpu_allocator::MemoryLocation;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 
+static MEGABUFFER_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 #[repr(transparent)]
-pub struct Megabuffer(pub Arc<Mutex<MegabufferInner>>);
+pub struct Megabuffer(Arc<Mutex<MegabufferInner>>);
 
 impl Clone for Megabuffer {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+impl PartialEq for Megabuffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.lock().unwrap().id == other.0.lock().unwrap().id
     }
 }
 
@@ -21,10 +30,10 @@ pub struct FreeMegabufferRegion {
     size: u64,
 }
 
-pub struct AllocatedMegabufferRegion {
+pub struct AllocatedMegabufferRegion{
     offset: u64,
     size: u64,
-    megabuffer: Megabuffer,
+    megabuffer: Option<Megabuffer>,
 }
 
 impl AllocatedMegabufferRegion {
@@ -32,7 +41,72 @@ impl AllocatedMegabufferRegion {
     where
         T: Copy,
     {
-        self.megabuffer.write(data, self)
+        self.megabuffer.as_ref().unwrap().write(data, self)
+    }
+
+    pub fn suballocate_region(&mut self, size: u64) -> Result<AllocatedMegabufferRegion> {
+        if size > self.size {
+            return Err(eyre!("Subregion size too large"));
+        }
+        if size == 0 {
+            return Err(eyre!("Subregion size cannot be zero"));
+        }
+        if size == self.size {
+            return Err(eyre!("Subregion size cannot be the parent region"));
+        }
+        
+        let subregion = AllocatedMegabufferRegion {
+            offset: self.offset + (self.size - size),
+            size,
+            megabuffer: self.megabuffer.clone(),
+        };
+        self.size -= size;
+
+        Ok(subregion)
+    }
+
+    pub fn combine_adjacent_region(&mut self, other: Self) -> Result<()> {
+        if self.megabuffer != other.megabuffer {
+            return Err(eyre!("Cannot combine regions belonging to different megabuffers"));
+        }
+
+        let (
+            new_offset,
+            new_size,
+        ) = {
+            let (
+                left_offset,
+                left_size,
+                right_offset,
+                right_size,
+            ) = if self.offset < other.offset {
+                (self.offset, self.size, other.offset, other.size)
+            } else {
+                (other.offset, other.size, self.offset, self.size)
+            };
+
+            let adjacent = left_offset + left_size == right_offset;
+            if !adjacent {
+                return Err(eyre!("Cannot combine regions that are not adjacent"));
+            }
+
+            let new_offset = left_offset;
+            let new_size = left_size + right_size;
+
+            (new_offset, new_size)
+        };
+
+        self.offset = new_offset;
+        self.size = new_size;
+
+        Ok(())
+    }
+}
+
+impl Drop for AllocatedMegabufferRegion {
+    fn drop(&mut self) {
+        let megabuffer = self.megabuffer.take().unwrap();
+        megabuffer.deallocate_region(self).unwrap();
     }
 }
 
@@ -44,6 +118,7 @@ struct MegabufferInner {
     alignment: u64,
 
     transfer_context: Arc<TransferContext>,
+    id: usize,
 }
 
 pub trait MegabufferExt<B> {
@@ -56,7 +131,7 @@ pub trait MegabufferExt<B> {
         transfer_context: Arc<TransferContext>,
     ) -> Result<B>;
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion>;
-    fn deallocate_region(&self, region: AllocatedMegabufferRegion) -> Result<()>;
+    fn deallocate_region(&self, region: &mut AllocatedMegabufferRegion) -> Result<()>;
     fn defragment(&self) -> Result<()>;
     fn upload(&self) -> Result<()>;
     fn write<T>(
@@ -96,6 +171,9 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
             device,
         )?;
 
+        let id = MEGABUFFER_ID_COUNTER
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         Ok(Megabuffer(Arc::new(Mutex::new(MegabufferInner {
             buffer,
             staging_buffer,
@@ -106,6 +184,7 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
             mem_loc,
             alignment,
             transfer_context,
+            id,
         }))))
     }
 
@@ -124,13 +203,20 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
         let allocated_region = AllocatedMegabufferRegion {
             offset: free_region.offset,
             size: free_region.size,
-            megabuffer: self.clone(),
+            megabuffer: Some(self.clone()),
         };
 
         Ok(allocated_region)
     }
 
-    fn deallocate_region(&self, region: AllocatedMegabufferRegion) -> Result<()> {
+    fn deallocate_region(&self, region: &mut AllocatedMegabufferRegion) -> Result<()> {
+        if region.size == 0 {
+            return Err(eyre!("Cannot deallocate region with size 0"));
+        }
+        if self != region.megabuffer.as_ref().unwrap() {
+            return Err(eyre!("Cannot deallocate region belonging to different megabuffer"));
+        }
+        
         let mut guard = self.0
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
@@ -167,6 +253,8 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
                 guard.free_regions.sort_by_key(|r| r.offset);
             }
         }
+
+        region.size = 0;
 
         Ok(())
     }
@@ -292,5 +380,11 @@ impl MegabufferInner {
         }
 
         Some(region_index)
+    }
+}
+
+impl PartialEq for MegabufferInner {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
     }
 }

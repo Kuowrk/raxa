@@ -7,7 +7,8 @@ use crate::renderer::contexts::resource_ctx::descriptor_set_layout_builder::Desc
 use crate::renderer::contexts::resource_ctx::resource_type::RenderResourceType;
 use crate::renderer::resources::buffer::Buffer;
 use crate::renderer::resources::material::{GraphicsMaterialFactoryBuilder, MaterialFactory};
-use crate::renderer::resources::megabuffer::{Megabuffer};
+use crate::renderer::resources::megabuffer::Megabuffer;
+use crate::renderer::resources::shader::GraphicsShader;
 use crate::renderer::resources::texture::{ColorTexture, StorageTexture};
 use crate::renderer::shader_data::PerDrawData;
 
@@ -19,22 +20,21 @@ const STORAGE_BUFFER_ALIGNMENT: u64 = 16;
 const UNIFORM_BUFFER_ALIGNMENT: u64 = 256;
 
 pub struct RenderResourceStorage {
-    uniform_buffers: Vec<Buffer>,
-    storage_buffers: Vec<Megabuffer>,
-    storage_images: Vec<StorageTexture>,
-    sampled_images: Vec<ColorTexture>,
-    samplers: Vec<vk::Sampler>,
+    pub uniform_buffers: Vec<Buffer>,
+    pub storage_buffers: Vec<Megabuffer>,
+    pub storage_images: Vec<StorageTexture>,
+    pub sampled_images: Vec<ColorTexture>,
+    pub samplers: Vec<vk::Sampler>,
 
-    vertex_megabuffer: Megabuffer,
-    index_megabuffer: Megabuffer,
-
-    bindless_material_factory: MaterialFactory,
+    pub vertex_megabuffer: Megabuffer,
+    pub index_megabuffer: Megabuffer,
+    pub bindless_material_factory: MaterialFactory,
 }
 
 impl RenderResourceStorage {
     pub fn new(
         dev_ctx: &RenderDeviceContext,
-    ) -> color_eyre::Result<Self> {
+    ) -> Result<Self> {
         let device = &dev_ctx.device;
 
         let vertex_megabuffer = device.create_megabuffer(
@@ -79,14 +79,14 @@ impl RenderResourceStorage {
             bindless_descriptor_set_layout,
             &device,
         )?;
-        let default_shader =
+        let default_shader = GraphicsShader::new("default", device.clone())?;
         GraphicsMaterialFactoryBuilder::new(device, descriptor_allocator)
             .with_shader(default_shader)
             .with_pipeline_layout(bindless_pipeline_layout)
             .with_descriptor_set_layout(bindless_descriptor_set_layout)
-            .with_color_attachment_format(draw_image)
-            .with_depth_attachment_format(depth_image)
-            .build()?;
+            .with_color_attachment_format(vk::Format::R8G8B8A8_SRGB)
+            .with_depth_attachment_format(vk::Format::D32_SFLOAT)
+            .build()
     }
     
     fn create_bindless_descriptor_set_layout(
