@@ -10,115 +10,24 @@ use std::sync::{Arc, Mutex};
 
 static MEGABUFFER_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-#[repr(transparent)]
-pub struct Megabuffer(Arc<Mutex<MegabufferInner>>);
+pub struct Megabuffer {
+    inner: Arc<Mutex<MegabufferInner>>,
+    parent: Option<Arc<Mutex<MegabufferInner>>>,
+}
 
 impl Clone for Megabuffer {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            inner: self.inner.clone(),
+            parent: self.parent.clone(),
+        }
     }
 }
 
 impl PartialEq for Megabuffer {
     fn eq(&self, other: &Self) -> bool {
-        self.0.lock().unwrap().id == other.0.lock().unwrap().id
+        self.inner.lock().unwrap().id == other.inner.lock().unwrap().id
     }
-}
-
-pub struct FreeMegabufferRegion {
-    offset: u64,
-    size: u64,
-}
-
-pub struct AllocatedMegabufferRegion{
-    offset: u64,
-    size: u64,
-    megabuffer: Option<Megabuffer>,
-}
-
-impl AllocatedMegabufferRegion {
-    pub fn write<T>(&mut self, data: &[T]) -> Result<presser::CopyRecord>
-    where
-        T: Copy,
-    {
-        self.megabuffer.as_ref().unwrap().write(data, self)
-    }
-
-    pub fn suballocate_region(&mut self, size: u64) -> Result<AllocatedMegabufferRegion> {
-        if size > self.size {
-            return Err(eyre!("Subregion size too large"));
-        }
-        if size == 0 {
-            return Err(eyre!("Subregion size cannot be zero"));
-        }
-        if size == self.size {
-            return Err(eyre!("Subregion size cannot be the parent region"));
-        }
-        
-        let subregion = AllocatedMegabufferRegion {
-            offset: self.offset + (self.size - size),
-            size,
-            megabuffer: self.megabuffer.clone(),
-        };
-        self.size -= size;
-
-        Ok(subregion)
-    }
-
-    pub fn combine_adjacent_region(&mut self, other: Self) -> Result<()> {
-        if self.megabuffer != other.megabuffer {
-            return Err(eyre!("Cannot combine regions belonging to different megabuffers"));
-        }
-
-        let (
-            new_offset,
-            new_size,
-        ) = {
-            let (
-                left_offset,
-                left_size,
-                right_offset,
-                right_size,
-            ) = if self.offset < other.offset {
-                (self.offset, self.size, other.offset, other.size)
-            } else {
-                (other.offset, other.size, self.offset, self.size)
-            };
-
-            let adjacent = left_offset + left_size == right_offset;
-            if !adjacent {
-                return Err(eyre!("Cannot combine regions that are not adjacent"));
-            }
-
-            let new_offset = left_offset;
-            let new_size = left_size + right_size;
-
-            (new_offset, new_size)
-        };
-
-        self.offset = new_offset;
-        self.size = new_size;
-
-        Ok(())
-    }
-}
-
-impl Drop for AllocatedMegabufferRegion {
-    fn drop(&mut self) {
-        let megabuffer = self.megabuffer.take().unwrap();
-        megabuffer.deallocate_region(self).unwrap();
-    }
-}
-
-struct MegabufferInner {
-    buffer: Buffer,
-    staging_buffer: Buffer,
-    free_regions: Vec<FreeMegabufferRegion>,
-    mem_loc: MemoryLocation,
-    alignment: u64,
-
-    transfer_context: Arc<TransferContext>,
-    id: usize,
 }
 
 pub trait MegabufferExt<B> {
@@ -130,6 +39,7 @@ pub trait MegabufferExt<B> {
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
     ) -> Result<B>;
+    fn allocate_subbuffer(&self, size: u64) -> Result<B>;
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion>;
     fn deallocate_region(&self, region: &mut AllocatedMegabufferRegion) -> Result<()>;
     fn defragment(&self) -> Result<()>;
@@ -141,6 +51,7 @@ pub trait MegabufferExt<B> {
     ) -> Result<presser::CopyRecord>
     where
         T: Copy;
+    fn aligned_size(&self, size: u64) -> u64;
 }
 
 impl MegabufferExt<Megabuffer> for Megabuffer {
@@ -153,41 +64,85 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
         transfer_context: Arc<TransferContext>,
     ) -> Result<Megabuffer> {
         let mem_loc = MemoryLocation::GpuOnly;
-        let buffer = Buffer::new(
+        let buffer = Arc::new(Mutex::new(Buffer::new(
             size,
             usage,
             "Buffer Allocator Buffer Allocation",
             mem_loc,
             memory_allocator.clone(),
             device.clone(),
-        )?;
+        )?));
 
-        let staging_buffer = Buffer::new(
+        let staging_buffer = Arc::new(Mutex::new(Buffer::new(
             size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             "Buffer Allocator Staging Buffer Allocation",
             MemoryLocation::CpuToGpu,
-            memory_allocator,
-            device,
-        )?;
+            memory_allocator.clone(),
+            device.clone(),
+        )?));
 
         let id = MEGABUFFER_ID_COUNTER
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        Ok(Megabuffer(Arc::new(Mutex::new(MegabufferInner {
-            buffer,
-            staging_buffer,
-            free_regions: vec![FreeMegabufferRegion {
-                offset: 0,
-                size,
-            }],
-            mem_loc,
-            alignment,
-            transfer_context,
-            id,
-        }))))
+        Ok(Megabuffer {
+            inner: Arc::new(Mutex::new(MegabufferInner {
+                buffer,
+                staging_buffer,
+                free_regions: vec![FreeMegabufferRegion {
+                    offset: 0,
+                    size,
+                }],
+                mem_loc,
+                alignment,
+                transfer_context,
+                id,
+                mem_allocator: memory_allocator,
+                device,
+            })),
+            parent: None,
+        })
     }
 
+    fn allocate_subbuffer(&self, size: u64) -> Result<Self> {
+        let allocated_region = self.allocate_region(size)?;
+        let free_region = FreeMegabufferRegion {
+            offset: allocated_region.offset,
+            size: allocated_region.size,
+        };
+
+        let guard = self.inner
+            .lock()
+            .map_err(|e| eyre!(e.to_string()))?;
+
+        let buffer = guard.buffer.clone();
+        let staging_buffer = guard.staging_buffer.clone();
+        let free_regions = vec![free_region];
+
+        let id = MEGABUFFER_ID_COUNTER
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mem_loc = guard.mem_loc;
+        let alignment = guard.alignment;
+        let mem_allocator = guard.mem_allocator.clone();
+        let device = guard.device.clone();
+        let transfer_context = guard.transfer_context.clone();
+
+        Ok(Megabuffer {
+            inner: Arc::new(Mutex::new(MegabufferInner {
+                buffer,
+                staging_buffer,
+                free_regions,
+                id,
+                mem_loc,
+                alignment,
+                mem_allocator,
+                device,
+                transfer_context,
+            })),
+            parent: Some(self.inner.clone()),
+        })
+    }
+    
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion> {
         let mut guard = self.0
             .lock()
@@ -217,7 +172,7 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
             return Err(eyre!("Cannot deallocate region belonging to different megabuffer"));
         }
         
-        let mut guard = self.0
+        let mut guard = self.inner
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -260,7 +215,7 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
     }
 
     fn defragment(&self) -> Result<()> {
-        let mut guard = self.0
+        let mut guard = self.inner
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -281,7 +236,7 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
     }
 
     fn upload(&self) -> Result<()> {
-        let guard = self.0
+        let guard = self.inner
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -298,11 +253,18 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
                     })
                     .collect::<Vec<vk::BufferCopy>>();
 
+                let src_guard = guard.staging_buffer
+                    .lock()
+                    .map_err(|e| eyre!(e.to_string()))?;
+                let dst_guard = guard.buffer
+                    .lock()
+                    .map_err(|e| eyre!(e.to_string()))?;
+
                 unsafe {
                     device.cmd_copy_buffer(
                         cmd,
-                        guard.staging_buffer.buffer,
-                        guard.buffer.buffer,
+                        src_guard.buffer,
+                        dst_guard.buffer,
                         &copy_regions,
                     );
                 }
@@ -326,12 +288,34 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
             return Err(eyre!("Data too large for region"));
         }
 
-        let mut guard = self.0
+        let mut guard = self.inner
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
         guard.staging_buffer.write(data, region.offset as usize)
     }
+    
+    fn aligned_size(&self, size: u64) -> Result<u64> {
+        let guard = self.inner
+            .lock()
+            .map_err(|e| eyre!(e.to_string()))?;
+        
+        Ok(guard.aligned_size(size))
+    }
+}
+
+struct MegabufferInner {
+    buffer: Arc<Mutex<Buffer>>,
+    staging_buffer: Arc<Mutex<Buffer>>,
+    free_regions: Vec<FreeMegabufferRegion>,
+
+    id: usize,
+    mem_loc: MemoryLocation,
+    alignment: u64,
+
+    mem_allocator: Arc<Mutex<Allocator>>,
+    device: Arc<ash::Device>,
+    transfer_context: Arc<TransferContext>,
 }
 
 impl MegabufferInner {
@@ -388,3 +372,90 @@ impl PartialEq for MegabufferInner {
         self.id == other.id
     }
 }
+pub struct FreeMegabufferRegion {
+    offset: u64,
+    size: u64,
+}
+
+pub struct AllocatedMegabufferRegion {
+    offset: u64,
+    size: u64,
+    megabuffer: Option<Megabuffer>,
+}
+
+impl AllocatedMegabufferRegion {
+    pub fn write<T>(&mut self, data: &[T]) -> Result<presser::CopyRecord>
+    where
+        T: Copy,
+    {
+        self.megabuffer.as_ref().unwrap().write(data, self)
+    }
+
+    pub fn suballocate_region(&mut self, size: u64) -> Result<AllocatedMegabufferRegion> {
+        let size = self.megabuffer.aligned_slize(size);
+        
+        if size > self.size {
+            return Err(eyre!("Subregion size too large"));
+        }
+        if size == 0 {
+            return Err(eyre!("Subregion size cannot be zero"));
+        }
+        if size == self.size {
+            return Err(eyre!("Subregion size cannot be the parent region"));
+        }
+        
+        let subregion = AllocatedMegabufferRegion {
+            offset: self.offset + (self.size - size),
+            size,
+            megabuffer: self.megabuffer.clone(),
+        };
+        self.size -= size;
+
+        Ok(subregion)
+    }
+
+    pub fn merge_adjacent_region(&mut self, other: Self) -> Result<()> {
+        if self.megabuffer != other.megabuffer {
+            return Err(eyre!("Cannot combine regions belonging to different megabuffers"));
+        }
+
+        let (
+            new_offset,
+            new_size,
+        ) = {
+            let (
+                left_offset,
+                left_size,
+                right_offset,
+                right_size,
+            ) = if self.offset < other.offset {
+                (self.offset, self.size, other.offset, other.size)
+            } else {
+                (other.offset, other.size, self.offset, self.size)
+            };
+
+            let adjacent = left_offset + left_size == right_offset;
+            if !adjacent {
+                return Err(eyre!("Cannot combine regions that are not adjacent"));
+            }
+
+            let new_offset = left_offset;
+            let new_size = left_size + right_size;
+
+            (new_offset, new_size)
+        };
+
+        self.offset = new_offset;
+        self.size = new_size;
+
+        Ok(())
+    }
+}
+
+impl Drop for AllocatedMegabufferRegion {
+    fn drop(&mut self) {
+        let megabuffer = self.megabuffer.take().unwrap();
+        megabuffer.deallocate_region(self).unwrap();
+    }
+}
+

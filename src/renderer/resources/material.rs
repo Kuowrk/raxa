@@ -94,7 +94,7 @@ impl MaterialFactory {
                 .lock()
                 .map_err(|e| eyre!(e.to_string()))?
                 .allocate(
-                    &DescriptorAshDevice::from(&self.device),
+                    &DescriptorAshDevice::from(self.device.clone()),
                     &self.descriptor_set_layout,
                     DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND,
                     &DescriptorTotalCount {

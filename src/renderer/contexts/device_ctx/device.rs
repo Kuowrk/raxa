@@ -395,10 +395,10 @@ impl RequiredDeviceFeatures<'_> {
     }
 }
 
-pub struct DescriptorAshDevice<'a>(pub &'a ash::Device);
+pub struct DescriptorAshDevice(pub Arc<ash::Device>);
 
-impl<'a> From<&'a ash::Device> for DescriptorAshDevice<'a> {
-    fn from(device: &'a ash::Device) -> Self {
+impl From<Arc<ash::Device>> for DescriptorAshDevice {
+    fn from(device: Arc<ash::Device>) -> Self {
         Self(device)
     }
 }
