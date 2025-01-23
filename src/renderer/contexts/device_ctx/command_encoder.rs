@@ -1,10 +1,12 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use color_eyre::Result;
 use ash::vk;
 use color_eyre::eyre::eyre;
-use crate::renderer::contexts::device_ctx::command_buffer_allocator::CommandEncoderAllocator;
+use crate::renderer::contexts::device_ctx::command_encoder_allocator::CommandEncoderAllocator;
 use crate::renderer::contexts::device_ctx::queue::Queue;
 use crate::renderer::resources::image::Image;
+
+use super::command_encoder_allocator::CommandEncoderAllocatorExt;
 
 pub struct CommandEncoder {
     pub command_buffer: vk::CommandBuffer,
@@ -13,7 +15,7 @@ pub struct CommandEncoder {
     is_recording: bool,
 
     device: Arc<ash::Device>,
-    allocator: CommandEncoderAllocator,
+    allocator: Option<CommandEncoderAllocator>,
 }
 
 impl CommandEncoder {
@@ -27,7 +29,7 @@ impl CommandEncoder {
             command_buffer,
             queue,
             device,
-            allocator,
+            allocator: Some(allocator),
             is_recording: false,
         }
     }
@@ -94,7 +96,10 @@ impl Drop for CommandEncoder {
             log::warn!("Dropping CommandEncoder while still recording");
         }
 
-        let mut allocator = self.allocator.0.lock().unwrap();
+        let mut allocator = self.allocator
+            .take()
+            .expect("CommandEncoderAllocator not found for CommandEncoder");
+        
         allocator.free(self).unwrap();
     }
 }

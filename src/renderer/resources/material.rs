@@ -18,7 +18,7 @@ pub struct Material<'a> {
     device: &'a ash::Device,
 }
 
-impl Material<'_> {
+impl<'a> Material<'a> {
     pub fn update_push_constants(
         &self,
         command_buffer: vk::CommandBuffer,
@@ -386,14 +386,14 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
         })
     }
 
-    fn default_input_assembly_info() -> vk::PipelineInputAssemblyStateCreateInfo
+    fn default_input_assembly_info() -> vk::PipelineInputAssemblyStateCreateInfo<'a>
     {
         vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .primitive_restart_enable(false)
     }
 
-    fn default_rasterization_info() -> vk::PipelineRasterizationStateCreateInfo
+    fn default_rasterization_info() -> vk::PipelineRasterizationStateCreateInfo<'a>
     {
         vk::PipelineRasterizationStateCreateInfo::default()
             .depth_clamp_enable(false)
@@ -424,7 +424,7 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             .alpha_blend_op(vk::BlendOp::ADD)
     }
 
-    fn default_multisample_info() -> vk::PipelineMultisampleStateCreateInfo {
+    fn default_multisample_info() -> vk::PipelineMultisampleStateCreateInfo<'a> {
         vk::PipelineMultisampleStateCreateInfo::default()
             .sample_shading_enable(false)
             // 1 sample per pixel means no multisampling
@@ -434,7 +434,7 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
             .alpha_to_one_enable(false)
     }
 
-    fn default_depth_stencil_info() -> vk::PipelineDepthStencilStateCreateInfo {
+    fn default_depth_stencil_info() -> vk::PipelineDepthStencilStateCreateInfo<'a> {
         vk::PipelineDepthStencilStateCreateInfo::default()
             .depth_test_enable(true)
             .depth_write_enable(true)
@@ -446,7 +446,7 @@ impl<'a> GraphicsMaterialFactoryBuilder<'a> {
     }
 }
 
-pub struct ComputeMaterialFactoryBuilder<'a> {
+pub struct ComputeMaterialFactoryBuilder {
     shader: Option<ComputeShader>,
     pipeline_layout: Option<vk::PipelineLayout>,
     descriptor_set_layout: Option<vk::DescriptorSetLayout>,
@@ -455,7 +455,7 @@ pub struct ComputeMaterialFactoryBuilder<'a> {
     descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
 }
 
-impl<'a> ComputeMaterialFactoryBuilder<'a> {
+impl ComputeMaterialFactoryBuilder {
     pub fn new(
         device: Arc<ash::Device>,
         descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,

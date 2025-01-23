@@ -1,3 +1,4 @@
+use ash::vk;
 use color_eyre::Result;
 use crate::renderer::contexts::device_ctx::RenderDeviceContext;
 use crate::renderer::contexts::resource_ctx::RenderResourceContext;
@@ -12,6 +13,15 @@ pub struct Frame {
     draw_depth_image: Image,
     vertex_subbuffer: Megabuffer,
     index_subbuffer: Megabuffer,
+
+    // Signals when the swapchain is ready to present.
+    present_semaphore: vk::Semaphore,
+    
+    // Signals when rendering commands have been submitted a queue.
+    render_semaphore: vk::Semaphore,
+
+    // Signals when all rendering commands have finished execution.
+    render_fence: vk::Fence,
 }
 
 impl Frame {
@@ -29,11 +39,27 @@ impl Frame {
         let index_subbuffer = res_ctx.storage.index_megabuffer
             .allocate_subbuffer(FRAME_INDEX_BUFFER_SIZE)?;
 
+        let present_semaphore = unsafe {
+            dev_ctx.device.logical.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?
+        };
+        let render_semaphore = unsafe {
+            dev_ctx.device.logical.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?
+        };
+        let render_fence = unsafe {
+            dev_ctx.device.logical.create_fence(
+                &vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED),
+                None,
+            )?
+        };
+
         Ok(Self {
             draw_color_image,
             draw_depth_image,
             vertex_subbuffer,
             index_subbuffer,
+            present_semaphore,
+            render_semaphore,
+            render_fence,
         })
     }
 }
