@@ -3,7 +3,6 @@ use crate::renderer::resources::image::Image;
 use color_eyre::Result;
 use gpu_allocator::vulkan::Allocator;
 use std::sync::{Arc, Mutex};
-use crate::renderer::contexts::resource_ctx::resource_allocator::RenderResourceHandle;
 
 pub struct ColorTexture {
     pub image: Image,
@@ -21,9 +20,9 @@ impl ColorTexture {
         transfer_context: &TransferContext,
     ) -> Result<Self> {
         let image = Image::new_color_image(
-            data,
             width,
             height,
+            Some(data),
             memory_allocator,
             device,
             transfer_context,

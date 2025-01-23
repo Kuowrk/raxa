@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 static MEGABUFFER_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 pub struct Megabuffer {
-    inner: Arc<Mutex<MegabufferInner>>,
+    pub inner: Arc<Mutex<MegabufferInner>>,
     parent: Option<Arc<Mutex<MegabufferInner>>>,
 }
 
@@ -30,7 +30,7 @@ impl PartialEq for Megabuffer {
     }
 }
 
-pub trait MegabufferExt<B> {
+pub trait MegabufferExt {
     fn new(
         size: u64,
         usage: vk::BufferUsageFlags,
@@ -38,8 +38,8 @@ pub trait MegabufferExt<B> {
         memory_allocator: Arc<Mutex<Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
-    ) -> Result<B>;
-    fn allocate_subbuffer(&self, size: u64) -> Result<B>;
+    ) -> Result<Megabuffer>;
+    fn allocate_subbuffer(&self, size: u64) -> Result<Megabuffer>;
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion>;
     fn deallocate_region(&self, region: &mut AllocatedMegabufferRegion) -> Result<()>;
     fn defragment(&self) -> Result<()>;
@@ -51,10 +51,10 @@ pub trait MegabufferExt<B> {
     ) -> Result<presser::CopyRecord>
     where
         T: Copy;
-    fn aligned_size(&self, size: u64) -> u64;
+    fn aligned_size(&self, size: u64) -> Result<u64>;
 }
 
-impl MegabufferExt<Megabuffer> for Megabuffer {
+impl MegabufferExt for Megabuffer {
     fn new(
         size: u64,
         usage: vk::BufferUsageFlags,
@@ -144,7 +144,7 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
     }
     
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion> {
-        let mut guard = self.0
+        let mut guard = self.inner
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
@@ -288,11 +288,15 @@ impl MegabufferExt<Megabuffer> for Megabuffer {
             return Err(eyre!("Data too large for region"));
         }
 
-        let mut guard = self.inner
+        let inner_guard = self.inner
+            .lock()
+            .map_err(|e| eyre!(e.to_string()))?;
+        
+        let mut staging_guard = inner_guard.staging_buffer
             .lock()
             .map_err(|e| eyre!(e.to_string()))?;
 
-        guard.staging_buffer.write(data, region.offset as usize)
+        staging_guard.write(data, region.offset as usize)
     }
     
     fn aligned_size(&self, size: u64) -> Result<u64> {
@@ -392,7 +396,7 @@ impl AllocatedMegabufferRegion {
     }
 
     pub fn suballocate_region(&mut self, size: u64) -> Result<AllocatedMegabufferRegion> {
-        let size = self.megabuffer.aligned_slize(size);
+        let size = self.megabuffer.as_ref().unwrap().aligned_size(size)?;
         
         if size > self.size {
             return Err(eyre!("Subregion size too large"));
@@ -414,9 +418,34 @@ impl AllocatedMegabufferRegion {
         Ok(subregion)
     }
 
+    pub fn belongs_to_same_megabuffer(&self, other: &Self) -> bool {
+        self.megabuffer == other.megabuffer
+    }
+
+    pub fn is_adjacent_to(&self, other: &Self) -> bool {
+        if !self.belongs_to_same_megabuffer(other) {
+            return false;
+        }
+
+        let (
+            left_offset,
+            left_size,
+            right_offset,
+        ) = if self.offset < other.offset {
+            (self.offset, self.size, other.offset)
+        } else {
+            (other.offset, other.size, self.offset)
+        };
+
+        left_offset + left_size == right_offset
+    }
+
     pub fn merge_adjacent_region(&mut self, other: Self) -> Result<()> {
         if self.megabuffer != other.megabuffer {
             return Err(eyre!("Cannot combine regions belonging to different megabuffers"));
+        }
+        if !self.is_adjacent_to(&other) {
+            return Err(eyre!("Cannot combine regions that are not adjacent"));
         }
 
         let (
@@ -426,18 +455,12 @@ impl AllocatedMegabufferRegion {
             let (
                 left_offset,
                 left_size,
-                right_offset,
                 right_size,
             ) = if self.offset < other.offset {
-                (self.offset, self.size, other.offset, other.size)
+                (self.offset, self.size, other.size)
             } else {
-                (other.offset, other.size, self.offset, self.size)
+                (other.offset, other.size, self.size)
             };
-
-            let adjacent = left_offset + left_size == right_offset;
-            if !adjacent {
-                return Err(eyre!("Cannot combine regions that are not adjacent"));
-            }
 
             let new_offset = left_offset;
             let new_size = left_size + right_size;

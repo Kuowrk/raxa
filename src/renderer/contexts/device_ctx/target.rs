@@ -94,5 +94,9 @@ impl RenderTarget {
         Ok(())
     }
 
+    pub fn get_size(&self) -> winit::dpi::PhysicalSize<u32> {
+        self.window.inner_size()
+    }
+
 }
 

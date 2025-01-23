@@ -6,6 +6,7 @@ use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::{CreatePoolError, DescriptorAllocator, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
+use crate::renderer::resources::image::Image;
 use crate::renderer::resources::megabuffer::{Megabuffer, MegabufferExt};
 use crate::renderer::contexts::device_ctx::command_buffer_allocator::{CommandEncoderAllocator, CommandEncoderAllocatorExt};
 use crate::renderer::contexts::device_ctx::instance::RenderInstance;
@@ -81,7 +82,7 @@ impl RenderDevice {
         let command_encoder_allocator = CommandEncoderAllocator::new(
             logical_device.clone(),
         )?;
-        let mut descriptor_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>
+        let descriptor_allocator: DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>
             = DescriptorAllocator::new(1024);
 
         let transfer_context = TransferContext::new(
@@ -133,6 +134,34 @@ impl RenderDevice {
         )
     }
 
+    pub fn create_color_image(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<Image> {
+        Image::new_color_image(
+            width,
+            height,
+            None,
+            self.memory_allocator.clone(),
+            self.logical.clone(),
+            &self.transfer_context.clone(),
+        )
+    }
+
+    pub fn create_depth_image(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<Image> {
+        Image::new_depth_image(
+            width,
+            height,
+            self.memory_allocator.clone(),
+            self.logical.clone()
+        )
+    }
+    
     fn select_physical_device(
         instance: &ash::Instance,
         surface: Option<&(vk::SurfaceKHR, ash::khr::surface::Instance)>,
@@ -506,7 +535,7 @@ for DescriptorAshDevice
         }
 
         let result = unsafe {
-            self.logical.create_descriptor_pool(
+            self.0.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::default()
                     .max_sets(max_sets)
                     .pool_sizes(&array[..len])
@@ -526,7 +555,7 @@ for DescriptorAshDevice
 
     unsafe fn destroy_descriptor_pool(&self, pool: vk::DescriptorPool) {
         unsafe {
-            self.logical.destroy_descriptor_pool(pool, None)
+            self.0.destroy_descriptor_pool(pool, None)
         }
     }
 
@@ -539,7 +568,7 @@ for DescriptorAshDevice
         let set_layouts: smallvec::SmallVec<[_; 16]> = layouts.copied().collect();
 
         unsafe {
-            match self.logical.allocate_descriptor_sets(
+            match self.0.allocate_descriptor_sets(
                 &vk::DescriptorSetAllocateInfo::default()
                     .set_layouts(&set_layouts)
                     .descriptor_pool(*pool),
@@ -568,7 +597,7 @@ for DescriptorAshDevice
     ) {
         let sets: smallvec::SmallVec<[_; 16]> = sets.collect();
         unsafe {
-            match self.logical.free_descriptor_sets(*pool, &sets) {
+            match self.0.free_descriptor_sets(*pool, &sets) {
                 Ok(()) => {}
                 Err(err) => panic!("Unexpected return code '{}'", err),
             }

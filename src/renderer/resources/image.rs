@@ -95,9 +95,9 @@ impl Image {
 
     /// Create a 32-bit shader-readable image from a byte array
     pub fn new_color_image(
-        data: &[u8],
         width: u32,
         height: u32,
+        data: Option<&[u8]>,
         memory_allocator: Arc<Mutex<Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: &TransferContext,
@@ -115,7 +115,11 @@ impl Image {
                 name: "Color Image".into(),
             };
             let mut image = Self::new(&create_info, memory_allocator, device)?;
-            image.upload(data, transfer_context)?;
+            
+            if let Some(data) = data {
+                image.upload(data, transfer_context)?;
+            }
+            
             image
         };
 

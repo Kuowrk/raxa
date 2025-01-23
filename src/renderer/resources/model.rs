@@ -5,7 +5,6 @@ use crate::renderer::resources::megabuffer::{AllocatedMegabufferRegion, Megabuff
 use crate::renderer::shader_data::PerVertexData;
 use color_eyre::eyre::{eyre, Result};
 use glam::Vec3;
-use std::sync::{Arc, Mutex};
 
 pub struct FullscreenQuad {
     quad_model: Model,
@@ -16,8 +15,8 @@ pub struct FullscreenQuad {
 
 impl FullscreenQuad {
     pub fn new(
-        vertex_megabuffer: &mut Arc<Mutex<Megabuffer>>,
-        index_megabuffer: &mut Arc<Mutex<Megabuffer>>,
+        vertex_megabuffer: &Megabuffer,
+        index_megabuffer: &Megabuffer,
         tgt: &RenderTarget,
     ) -> Result<Self> {
         let quad_mesh = Mesh::new_quad();
@@ -39,7 +38,7 @@ impl FullscreenQuad {
     pub fn resize_to_target(
         &mut self,
         tgt: &RenderTarget,
-        vertex_megabuffer: &mut Arc<Mutex<Megabuffer>>,
+        vertex_megabuffer: &Megabuffer,
     ) -> Result<()> {
         // Correct for image aspect ratio
         let mut x = if self.image_width >= self.image_height {
@@ -90,8 +89,8 @@ pub struct Model {
 impl Model {
     pub fn new(
         meshes: Vec<Mesh>,
-        vertex_megabuffer: &mut Arc<Mutex<Megabuffer>>,
-        index_megabuffer: &mut Arc<Mutex<Megabuffer>>,
+        vertex_megabuffer: &Megabuffer,
+        index_megabuffer: &Megabuffer,
     ) -> Result<Self> {
         if meshes.is_empty() {
             return Err(eyre!("Model must have at least one mesh"));
@@ -148,14 +147,14 @@ impl Model {
 
     pub fn write_vertex_buffer(
         &mut self,
-        vertices: &Vec<PerVertexData>,
-        vertex_megabuffer: &Arc<Mutex<Megabuffer>>,
+        vertices: &[PerVertexData],
+        vertex_megabuffer: &Megabuffer,
     ) -> Result<()> {
         if self.vertex_megabuffer_region.is_none() {
             return Err(eyre!("Model does not have a vertex buffer region"));
         }
 
-        vertex_megabuffer.deallocate_region(self.vertex_megabuffer_region.take().unwrap())?;
+        vertex_megabuffer.deallocate_region(&mut self.vertex_megabuffer_region.take().unwrap())?;
 
         let mut vertex_megabuffer_region = vertex_megabuffer
             .allocate_region((vertices.len() * size_of::<PerVertexData>()) as u64)?;

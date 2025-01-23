@@ -28,8 +28,8 @@ impl Renderer {
     ) -> Result<Self> {
         let dev_ctx = RenderDeviceContext::new(window)?;
         let res_ctx = RenderResourceContext::new(&dev_ctx)?;
+        let frm_ctx = RenderFrameContext::new(&dev_ctx, &res_ctx)?;
         let grp_ctx = RenderGraphContext::new(&dev_ctx)?;
-        let frm_ctx = RenderFrameContext::new(&dev_ctx)?;
         let pip_ctx = RenderPipelineContext::new(&dev_ctx)?;
 
         Ok(Self {
