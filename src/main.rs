@@ -1,3 +1,5 @@
+extern crate vk_mem;
+
 pub mod app;
 pub mod renderer;
 

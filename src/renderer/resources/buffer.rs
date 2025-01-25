@@ -2,64 +2,54 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::eyre;
-use gpu_allocator::{
-    vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
-    MemoryLocation,
-};
+use vk_mem::Alloc;
 
 pub struct Buffer {
     pub buffer: vk::Buffer,
     pub size: u64,
+    mapped: bool,
 
-    allocation: Option<Allocation>,
-    memory_allocator: Arc<Mutex<Allocator>>,
+    allocation: Option<vk_mem::Allocation>,
+    memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
     device: Arc<ash::Device>,
 }
 
 impl Buffer {
     pub fn new(
         size: u64,
-        usage: vk::BufferUsageFlags,
-        name: &str,
-        mem_loc: MemoryLocation,
-        mem_allocator: Arc<Mutex<Allocator>>,
+        buf_usage: vk::BufferUsageFlags,
+        mem_usage: vk_mem::MemoryUsage,
+        mapped: bool,
+        
+        mem_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
-        let buffer = {
+        let (buffer, allocation) = unsafe {
             let buffer_info = vk::BufferCreateInfo {
                 size,
-                usage,
+                usage: buf_usage,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
             };
-            unsafe { device.create_buffer(&buffer_info, None)? }
+            let allocation_info = vk_mem::AllocationCreateInfo {
+                usage: mem_usage,
+                flags: if mapped {
+                    vk_mem::AllocationCreateFlags::MAPPED
+                } else {
+                    vk_mem::AllocationCreateFlags::empty()
+                },
+                ..Default::default()
+            };
+            mem_allocator
+                .lock()
+                .map_err(|e| eyre!(e.to_string()))?
+                .create_buffer(&buffer_info, &allocation_info)?
         };
-
-        let requirements = unsafe {
-            device.get_buffer_memory_requirements(buffer)
-        };
-        let allocation = mem_allocator
-            .lock()
-            .map_err(|e| eyre!(e.to_string()))?
-            .allocate(&AllocationCreateDesc {
-                name,
-                requirements,
-                location: mem_loc,
-                linear: true,
-                allocation_scheme: AllocationScheme::DedicatedBuffer(buffer)
-            })?;
-
-        unsafe {
-            device.bind_buffer_memory(
-                buffer,
-                allocation.memory(),
-                allocation.offset(),
-            )?;
-        }
 
         Ok(Self {
             buffer,
             size,
+            mapped,
 
             allocation: Some(allocation),
             memory_allocator: mem_allocator,
@@ -75,23 +65,49 @@ impl Buffer {
     where
         T: Copy,
     {
-        Ok(presser::copy_from_slice_to_offset(
-            data,
-            self.allocation.as_mut().unwrap(),
+        if !self.mapped {
+            return Err(eyre!("Cannot write to buffer that is not mapped"));
+        }
+
+        let allocation = self.allocation
+            .as_ref()
+            .expect("Allocation does not exist");
+
+        let allocation_info = self.memory_allocator
+            .lock()
+            .map_err(|e| eyre!(e.to_string()))?
+            .get_allocation_info(allocation);
+
+        if std::mem::size_of_val(data) as u64 > allocation_info.size {
+            return Err(eyre!("Data too large to write into buffer"));
+        }
+
+        let mut raw_allocation = presser::RawAllocation::from_raw_parts(
+            std::ptr::NonNull::new(allocation_info.mapped_data as *mut u8)
+                .expect("Mapped data pointer was null"),
+            allocation_info.size as usize,
+        );
+        let mut slab = unsafe { raw_allocation.borrow_as_slab() };
+        let copy_record = presser::copy_to_offset(
+            &data,
+            &mut slab,
             start_offset,
-        )?)
+        )?;
+
+        Ok(copy_record)
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
+            let allocation = self.allocation
+                .as_mut()
+                .expect("Allocation does not exist");
             self.memory_allocator
                 .lock()
-                .unwrap()
-                .free(self.allocation.take().unwrap())
-                .unwrap();
-            self.device.destroy_buffer(self.buffer, None);
+                .expect("Failed to acquire lock for memory allocator")
+                .destroy_buffer(self.buffer, allocation);
         }
     }
 }

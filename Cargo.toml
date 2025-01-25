@@ -27,15 +27,11 @@ env_logger = "0.11.6"
 glam = { version = "0.29.2", features = ["bytemuck"] }
 gpu-descriptor = "0.3.1"
 log = "0.4.22"
-presser = "0.3.1"
 raw-window-handle = "0.6.2"
 winit = { version = "0.30.6" }
 smallvec = "1.0"
-
-[dependencies.gpu-allocator]
-version = "0.27.0"
-default-features = false
-features = ["vulkan"]
+vk-mem = "0.4.0"
+presser = "0.3.1"
 
 [dependencies.image]
 version = "0.25.5"

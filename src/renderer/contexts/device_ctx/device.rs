@@ -4,7 +4,6 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::OptionExt;
 use color_eyre::Result;
-use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 use gpu_descriptor::{CreatePoolError, DescriptorAllocator, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::resources::image::Image;
 use crate::renderer::resources::megabuffer::{Megabuffer, MegabufferExt};
@@ -23,7 +22,7 @@ pub struct RenderDevice {
     pub compute_queue: Arc<Queue>,
     pub transfer_queue: Arc<Queue>,
 
-    memory_allocator: Arc<Mutex<Allocator>>,
+    memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
     command_encoder_allocator: CommandEncoderAllocator,
     pub descriptor_allocator: Arc<Mutex<DescriptorAllocator<vk::DescriptorPool, vk::DescriptorSet>>>,
 
@@ -58,6 +57,7 @@ impl RenderDevice {
             transfer_queue_family,
         )?;
 
+/*
         let memory_allocator = Allocator::new(&AllocatorCreateDesc {
             instance: instance.instance.clone(),
             device: logical_device.clone(),
@@ -73,6 +73,14 @@ impl RenderDevice {
             buffer_device_address: true,
             allocation_sizes: Default::default(),
         })?;
+*/
+        let memory_allocator = unsafe {
+            vk_mem::Allocator::new(vk_mem::AllocatorCreateInfo::new(
+                &instance.instance,
+                &logical_device,
+                physical_device,
+            ))?
+        };
 
         let logical_device = Arc::new(logical_device);
         let graphics_queue = Arc::new(graphics_queue);

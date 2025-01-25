@@ -3,8 +3,6 @@ use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Result;
-use gpu_allocator::vulkan::Allocator;
-use gpu_allocator::MemoryLocation;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 
@@ -35,7 +33,7 @@ pub trait MegabufferExt {
         size: u64,
         usage: vk::BufferUsageFlags,
         alignment: u64,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
     ) -> Result<Megabuffer>;
@@ -59,16 +57,16 @@ impl MegabufferExt for Megabuffer {
         size: u64,
         usage: vk::BufferUsageFlags,
         alignment: u64,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
     ) -> Result<Megabuffer> {
-        let mem_loc = MemoryLocation::GpuOnly;
+        let mem_usage = vk_mem::MemoryUsage::AutoPreferDevice;
         let buffer = Arc::new(Mutex::new(Buffer::new(
             size,
             usage,
             "Buffer Allocator Buffer Allocation",
-            mem_loc,
+            mem_usage,
             memory_allocator.clone(),
             device.clone(),
         )?));
