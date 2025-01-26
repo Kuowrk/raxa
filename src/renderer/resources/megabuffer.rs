@@ -31,8 +31,10 @@ impl PartialEq for Megabuffer {
 pub trait MegabufferExt {
     fn new(
         size: u64,
-        usage: vk::BufferUsageFlags,
         alignment: u64,
+        buf_usage: vk::BufferUsageFlags,
+        mem_usage: vk_mem::MemoryUsage,
+        
         memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
@@ -55,8 +57,9 @@ pub trait MegabufferExt {
 impl MegabufferExt for Megabuffer {
     fn new(
         size: u64,
-        usage: vk::BufferUsageFlags,
         alignment: u64,
+        buf_usage: vk::BufferUsageFlags,
+        
         memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
@@ -64,18 +67,20 @@ impl MegabufferExt for Megabuffer {
         let mem_usage = vk_mem::MemoryUsage::AutoPreferDevice;
         let buffer = Arc::new(Mutex::new(Buffer::new(
             size,
-            usage,
-            "Buffer Allocator Buffer Allocation",
+            alignment,
+            buf_usage,
             mem_usage,
+            false,
             memory_allocator.clone(),
             device.clone(),
         )?));
 
         let staging_buffer = Arc::new(Mutex::new(Buffer::new(
             size,
+            alignment,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            "Buffer Allocator Staging Buffer Allocation",
-            MemoryLocation::CpuToGpu,
+            vk_mem::MemoryUsage::AutoPreferHost,
+            true,
             memory_allocator.clone(),
             device.clone(),
         )?));
@@ -91,7 +96,6 @@ impl MegabufferExt for Megabuffer {
                     offset: 0,
                     size,
                 }],
-                mem_loc,
                 alignment,
                 transfer_context,
                 id,
@@ -119,7 +123,6 @@ impl MegabufferExt for Megabuffer {
 
         let id = MEGABUFFER_ID_COUNTER
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let mem_loc = guard.mem_loc;
         let alignment = guard.alignment;
         let mem_allocator = guard.mem_allocator.clone();
         let device = guard.device.clone();
@@ -127,12 +130,13 @@ impl MegabufferExt for Megabuffer {
 
         Ok(Megabuffer {
             inner: Arc::new(Mutex::new(MegabufferInner {
+                id,
+                
                 buffer,
                 staging_buffer,
                 free_regions,
-                id,
-                mem_loc,
                 alignment,
+                
                 mem_allocator,
                 device,
                 transfer_context,
@@ -307,15 +311,14 @@ impl MegabufferExt for Megabuffer {
 }
 
 struct MegabufferInner {
+    id: usize,
+
     buffer: Arc<Mutex<Buffer>>,
     staging_buffer: Arc<Mutex<Buffer>>,
     free_regions: Vec<FreeMegabufferRegion>,
-
-    id: usize,
-    mem_loc: MemoryLocation,
     alignment: u64,
 
-    mem_allocator: Arc<Mutex<Allocator>>,
+    mem_allocator: Arc<Mutex<vk_mem::Allocator>>,
     device: Arc<ash::Device>,
     transfer_context: Arc<TransferContext>,
 }

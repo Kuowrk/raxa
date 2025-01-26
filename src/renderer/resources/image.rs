@@ -2,10 +2,7 @@ use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::eyre;
-use gpu_allocator::{
-    vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator},
-    MemoryLocation,
-};
+use vk_mem::Alloc;
 use crate::renderer::resources::buffer::Buffer;
 use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 
@@ -14,7 +11,7 @@ pub struct ImageCreateInfo {
     pub extent: vk::Extent3D,
     pub usage: vk::ImageUsageFlags,
     pub aspect: vk::ImageAspectFlags,
-    pub name: String,
+    pub use_dedicated_memory: bool, // true for larger images like fullscreen images
 }
 
 pub struct Image {
@@ -24,8 +21,8 @@ pub struct Image {
     pub extent: vk::Extent3D,
     pub aspect: vk::ImageAspectFlags,
 
-    allocation: Option<Allocation>, // GPU-only memory block
-    memory_allocator: Arc<Mutex<Allocator>>,
+    allocation: Option<vk_mem::Allocation>, // GPU-only memory block
+    memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
     device: Arc<ash::Device>,
 }
 
@@ -36,11 +33,11 @@ impl Image {
     // `Image::upload()`
     fn new(
         create_info: &ImageCreateInfo,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
-        let image = {
-            let info = vk::ImageCreateInfo::default()
+        let (image, allocation) = unsafe {
+            let image_info = vk::ImageCreateInfo::default()
                 .format(create_info.format)
                 .usage(create_info.usage)
                 .extent(create_info.extent)
@@ -49,22 +46,21 @@ impl Image {
                 .array_layers(1)
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .tiling(vk::ImageTiling::OPTIMAL);
-            unsafe { device.create_image(&info, None)? }
+            let allocation_info = vk_mem::AllocationCreateInfo {
+                usage: vk_mem::MemoryUsage::AutoPreferDevice,
+                flags: if create_info.use_dedicated_memory {
+                    vk_mem::AllocationCreateFlags::DEDICATED_MEMORY
+                } else {
+                    vk_mem::AllocationCreateFlags::empty()
+                },
+                ..Default::default()
+            };
+            memory_allocator
+                .lock()
+                .map_err(|e| eyre!(e.to_string()))?
+                .create_image(&image_info, &allocation_info)?
         };
-        let reqs = unsafe { device.get_image_memory_requirements(image) };
-        let allocation = memory_allocator
-            .lock()
-            .map_err(|e| eyre!(e.to_string()))?
-            .allocate(&AllocationCreateDesc {
-                name: &create_info.name,
-                requirements: reqs,
-                location: MemoryLocation::GpuOnly,
-                linear: false,
-                allocation_scheme: AllocationScheme::DedicatedImage(image),
-            })?;
-        unsafe {
-            device.bind_image_memory(image, allocation.memory(), 0)?;
-        }
+            
         let view = {
             let info = vk::ImageViewCreateInfo::default()
                 .view_type(vk::ImageViewType::TYPE_2D)
@@ -98,7 +94,9 @@ impl Image {
         width: u32,
         height: u32,
         data: Option<&[u8]>,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        use_dedicated_memory: bool,
+        
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: &TransferContext,
     ) -> Result<Self> {
@@ -112,7 +110,7 @@ impl Image {
                 },
                 usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
                 aspect: vk::ImageAspectFlags::COLOR,
-                name: "Color Image".into(),
+                use_dedicated_memory, 
             };
             let mut image = Self::new(&create_info, memory_allocator, device)?;
             
@@ -130,7 +128,7 @@ impl Image {
     pub fn new_depth_image(
         width: u32,
         height: u32,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
         let create_info = ImageCreateInfo {
@@ -142,7 +140,7 @@ impl Image {
             },
             usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             aspect: vk::ImageAspectFlags::DEPTH,
-            name: "Depth Image".into(),
+            use_dedicated_memory: true, // Assuming the depth image will be used as a fullscreen attachment
         };
         Self::new(&create_info, memory_allocator, device)
     }
@@ -151,7 +149,9 @@ impl Image {
     pub fn new_storage_image(
         width: u32,
         height: u32,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        use_dedicated_memory: bool,
+        
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
         let image = {
@@ -168,7 +168,7 @@ impl Image {
                 extent,
                 usage,
                 aspect: vk::ImageAspectFlags::COLOR,
-                name: "Storage Image".into(),
+                use_dedicated_memory,
             };
             Image::new(&create_info, memory_allocator, device)?
         };
@@ -233,9 +233,10 @@ impl Image {
     ) -> Result<()> {
         let mut staging_buffer = Buffer::new(
             data.len() as u64,
+            256,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            "Image staging buffer",
-            MemoryLocation::CpuToGpu,
+            vk_mem::MemoryUsage::AutoPreferHost,
+            true,
             self.memory_allocator.clone(),
             self.device.clone(),
         )?;
@@ -331,12 +332,13 @@ impl Drop for Image {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_image_view(self.view, None);
+            let allocation = self.allocation
+                .as_mut()
+                .expect("Allocation does not exist");
             self.memory_allocator
                 .lock()
-                .unwrap()
-                .free(self.allocation.take().unwrap())
-                .unwrap();
-            self.device.destroy_image(self.image, None);
+                .expect("Failed to acquire lock for memory allocator")
+                .destroy_image(self.image, allocation);
         }
     }
 }

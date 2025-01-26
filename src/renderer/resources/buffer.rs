@@ -17,6 +17,7 @@ pub struct Buffer {
 impl Buffer {
     pub fn new(
         size: u64,
+        alignment: u64,
         buf_usage: vk::BufferUsageFlags,
         mem_usage: vk_mem::MemoryUsage,
         mapped: bool,
@@ -43,7 +44,11 @@ impl Buffer {
             mem_allocator
                 .lock()
                 .map_err(|e| eyre!(e.to_string()))?
-                .create_buffer(&buffer_info, &allocation_info)?
+                .create_buffer_with_alignment(
+                    &buffer_info,
+                    &allocation_info,
+                    alignment,
+                )?
         };
 
         Ok(Self {
