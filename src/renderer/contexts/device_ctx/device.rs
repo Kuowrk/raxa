@@ -129,13 +129,13 @@ impl RenderDevice {
     pub fn create_megabuffer(
         &self,
         size: u64,
-        usage: vk::BufferUsageFlags,
         alignment: u64,
+        buf_usage: vk::BufferUsageFlags,
     ) -> Result<Megabuffer> {
         Megabuffer::new(
             size,
-            usage,
             alignment,
+            buf_usage,
             self.memory_allocator.clone(),
             self.logical.clone(),
             self.transfer_context.clone(),
@@ -146,11 +146,14 @@ impl RenderDevice {
         &self,
         width: u32,
         height: u32,
+        data: Option<&[u8]>,
+        use_dedicated_memory: bool,
     ) -> Result<Image> {
         Image::new_color_image(
             width,
             height,
-            None,
+            data,
+            use_dedicated_memory,
             self.memory_allocator.clone(),
             self.logical.clone(),
             &self.transfer_context.clone(),

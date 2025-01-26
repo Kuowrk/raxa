@@ -31,7 +31,12 @@ impl Frame {
     ) -> Result<Self> {
         let target_size = dev_ctx.target.as_ref().unwrap().get_size();
         
-        let draw_color_image = dev_ctx.device.create_color_image(target_size.width, target_size.height)?;
+        let draw_color_image = dev_ctx.device.create_color_image(
+            target_size.width,
+            target_size.height,
+            None,
+            true,
+        )?;
         let draw_depth_image = dev_ctx.device.create_depth_image(target_size.width, target_size.height)?;
 
         let vertex_subbuffer = res_ctx.storage.vertex_megabuffer

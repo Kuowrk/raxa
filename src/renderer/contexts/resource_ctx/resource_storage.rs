@@ -39,14 +39,14 @@ impl RenderResourceStorage {
 
         let vertex_megabuffer = device.create_megabuffer(
             VERTEX_BUFFER_SIZE,
-            vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             VERTEX_BUFFER_ALIGNMENT,
+            vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
         )?;
 
         let index_megabuffer = device.create_megabuffer(
             INDEX_BUFFER_SIZE,
-            vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
             INDEX_BUFFER_ALIGNMENT,
+            vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
         )?;
 
         let bindless_material_factory = Self::create_bindless_material_factory(

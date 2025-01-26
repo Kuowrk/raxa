@@ -1,7 +1,6 @@
 use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 use crate::renderer::resources::image::Image;
 use color_eyre::Result;
-use gpu_allocator::vulkan::Allocator;
 use std::sync::{Arc, Mutex};
 
 pub struct ColorTexture {
@@ -13,7 +12,9 @@ impl ColorTexture {
         width: u32,
         height: u32,
         data: Option<&[u8]>,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        use_dedicated_memory: bool,
+        
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: &TransferContext,
     ) -> Result<Self> {
@@ -21,6 +22,8 @@ impl ColorTexture {
             width,
             height,
             data,
+            use_dedicated_memory,
+            
             memory_allocator,
             device,
             transfer_context,
@@ -33,7 +36,8 @@ impl ColorTexture {
 
     pub fn new_from_image(
         image: &image::DynamicImage,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        use_dedicated_memory: bool,
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: &TransferContext,
     ) -> Result<Self> {
@@ -44,6 +48,7 @@ impl ColorTexture {
             width,
             height,
             Some(&data),
+            use_dedicated_memory,
             memory_allocator,
             device,
             transfer_context,
@@ -59,12 +64,14 @@ impl StorageTexture {
     pub fn new(
         width: u32,
         height: u32,
-        memory_allocator: Arc<Mutex<Allocator>>,
+        use_dedicated_memory: bool,
+        memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
     ) -> Result<Self> {
         let image = Image::new_storage_image(
             width,
             height,
+            use_dedicated_memory,
             memory_allocator,
             device,
         )?;

@@ -33,8 +33,6 @@ pub trait MegabufferExt {
         size: u64,
         alignment: u64,
         buf_usage: vk::BufferUsageFlags,
-        mem_usage: vk_mem::MemoryUsage,
-        
         memory_allocator: Arc<Mutex<vk_mem::Allocator>>,
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
