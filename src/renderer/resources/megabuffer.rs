@@ -11,6 +11,7 @@ static MEGABUFFER_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 pub struct Megabuffer {
     pub inner: Arc<Mutex<MegabufferInner>>,
     parent: Option<Arc<Mutex<MegabufferInner>>>,
+    id: usize,
 }
 
 impl Clone for Megabuffer {
@@ -18,6 +19,7 @@ impl Clone for Megabuffer {
         Self {
             inner: self.inner.clone(),
             parent: self.parent.clone(),
+            id: self.id,
         }
     }
 }
@@ -101,6 +103,7 @@ impl MegabufferExt for Megabuffer {
                 device,
             })),
             parent: None,
+            id,
         })
     }
 
@@ -140,6 +143,7 @@ impl MegabufferExt for Megabuffer {
                 transfer_context,
             })),
             parent: Some(self.inner.clone()),
+            id,
         })
     }
     
@@ -152,6 +156,7 @@ impl MegabufferExt for Megabuffer {
         let free_region_index = guard
             .find_free_region_for_allocation(aligned_size)
             .ok_or_eyre("Failed to find free region for allocation")?;
+        let megabuffer_id = guard.id;
 
         // Remove the free region from the free regions vector
         let free_region = guard.free_regions.remove(free_region_index);
@@ -159,6 +164,7 @@ impl MegabufferExt for Megabuffer {
             offset: free_region.offset,
             size: free_region.size,
             megabuffer: Some(self.clone()),
+            megabuffer_id,
         };
 
         Ok(allocated_region)
@@ -168,9 +174,7 @@ impl MegabufferExt for Megabuffer {
         if region.size == 0 {
             return Err(eyre!("Cannot deallocate region with size 0"));
         }
-        if self != region.megabuffer
-            .as_ref()
-            .expect("AllocatedMegabufferRegion does not have a reference to a Megabuffer") {
+        if self.id != region.megabuffer_id {
             return Err(eyre!("Cannot deallocate region belonging to different megabuffer"));
         }
         
@@ -286,7 +290,7 @@ impl MegabufferExt for Megabuffer {
     where
         T: Copy,
     {
-        if (data.len() * size_of::<T>()) as u64 > region.size {
+        if std::mem::size_of_val(data) as u64 > region.size {
             return Err(eyre!("Data too large for region"));
         }
 
@@ -386,6 +390,7 @@ pub struct AllocatedMegabufferRegion {
     offset: u64,
     size: u64,
     megabuffer: Option<Megabuffer>,
+    megabuffer_id: usize,
 }
 
 impl AllocatedMegabufferRegion {
@@ -413,6 +418,7 @@ impl AllocatedMegabufferRegion {
             offset: self.offset + (self.size - size),
             size,
             megabuffer: self.megabuffer.clone(),
+            megabuffer_id: self.megabuffer_id,
         };
         self.size -= size;
 
@@ -478,8 +484,11 @@ impl AllocatedMegabufferRegion {
 
 impl Drop for AllocatedMegabufferRegion {
     fn drop(&mut self) {
-        let megabuffer = self.megabuffer.take().unwrap();
-        megabuffer.deallocate_region(self).unwrap();
+        let megabuffer = self.megabuffer
+            .take()
+            .expect("AllocatedMegabufferRegion does not have a reference to a Megabuffer");
+        megabuffer.deallocate_region(self)
+            .expect("Failed to deallocate megabuffer region");
     }
 }
 
