@@ -168,7 +168,9 @@ impl MegabufferExt for Megabuffer {
         if region.size == 0 {
             return Err(eyre!("Cannot deallocate region with size 0"));
         }
-        if self != region.megabuffer.as_ref().unwrap() {
+        if self != region.megabuffer
+            .as_ref()
+            .expect("AllocatedMegabufferRegion does not have a reference to a Megabuffer") {
             return Err(eyre!("Cannot deallocate region belonging to different megabuffer"));
         }
         

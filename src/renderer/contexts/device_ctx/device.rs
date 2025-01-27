@@ -3,6 +3,7 @@ use std::str::Utf8Error;
 use std::sync::{Arc, Mutex};
 use ash::vk;
 use color_eyre::eyre::OptionExt;
+use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
 use gpu_descriptor::{CreatePoolError, DescriptorAllocator, DescriptorDevice, DescriptorPoolCreateFlags, DescriptorTotalCount, DeviceAllocationError};
 use crate::renderer::resources::image::Image;
@@ -57,23 +58,6 @@ impl RenderDevice {
             transfer_queue_family,
         )?;
 
-/*
-        let memory_allocator = Allocator::new(&AllocatorCreateDesc {
-            instance: instance.instance.clone(),
-            device: logical_device.clone(),
-            physical_device: physical_device.clone(),
-            debug_settings: gpu_allocator::AllocatorDebugSettings {
-                log_memory_information: true,
-                log_leaks_on_shutdown: true,
-                store_stack_traces: false,
-                log_allocations: true,
-                log_frees: true,
-                log_stack_traces: false,
-            },
-            buffer_device_address: true,
-            allocation_sizes: Default::default(),
-        })?;
-*/
         let memory_allocator = unsafe {
             vk_mem::Allocator::new(vk_mem::AllocatorCreateInfo::new(
                 &instance.instance,
@@ -331,9 +315,47 @@ impl RenderDevice {
                 .iter()
                 .map(|ext| ext.as_ptr())
                 .collect::<Vec<*const c_char>>();
-            let mut enabled_features = RequiredDeviceFeatures::new(physical_device, instance);
 
-            let device_create_info = enabled_features.device_create_info()
+            let mut features2 = vk::PhysicalDeviceFeatures2::default();
+            unsafe {
+                instance.get_physical_device_features2(*physical_device, &mut features2);
+            }
+            let mut features11 = vk::PhysicalDeviceVulkan11Features::default()
+                .shader_draw_parameters(true);
+            let mut features12 = vk::PhysicalDeviceVulkan12Features::default()
+                .runtime_descriptor_array(true)
+                .buffer_device_address(true)
+                .descriptor_indexing(true)
+                .descriptor_binding_partially_bound(true)
+                .descriptor_binding_variable_descriptor_count(true)
+                // Dynamic indexing
+                .shader_input_attachment_array_dynamic_indexing(true)
+                .shader_uniform_texel_buffer_array_dynamic_indexing(true)
+                .shader_storage_texel_buffer_array_dynamic_indexing(true)
+                // Non-uniform indexing
+                .shader_uniform_buffer_array_non_uniform_indexing(true)
+                .shader_sampled_image_array_non_uniform_indexing(true)
+                .shader_storage_buffer_array_non_uniform_indexing(true)
+                .shader_storage_image_array_non_uniform_indexing(true)
+                .shader_input_attachment_array_non_uniform_indexing(true)
+                .shader_uniform_texel_buffer_array_non_uniform_indexing(true)
+                .shader_storage_texel_buffer_array_non_uniform_indexing(true)
+                // Update after bind
+                .descriptor_binding_uniform_buffer_update_after_bind(true)
+                .descriptor_binding_sampled_image_update_after_bind(true)
+                .descriptor_binding_storage_image_update_after_bind(true)
+                .descriptor_binding_storage_buffer_update_after_bind(true)
+                .descriptor_binding_uniform_texel_buffer_update_after_bind(true)
+                .descriptor_binding_storage_texel_buffer_update_after_bind(true);
+            let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
+                .synchronization2(true)
+                .dynamic_rendering(true);
+
+            let device_create_info = vk::DeviceCreateInfo::default()//enabled_features.device_create_info()
+                .push_next(&mut features2)
+                .push_next(&mut features11)
+                .push_next(&mut features12)
+                .push_next(&mut features13)
                 .queue_create_infos(&queue_create_infos)
                 .enabled_extension_names(&enabled_extension_names);
 
@@ -370,68 +392,6 @@ impl RenderDevice {
             #[cfg(target_os = "macos")]
             ash::khr::portability_subset::NAME,
         ]
-    }
-}
-
-#[allow(unused)]
-struct RequiredDeviceFeatures<'a> {
-    features: vk::PhysicalDeviceFeatures,
-    synchronization2_features: vk::PhysicalDeviceSynchronization2FeaturesKHR<'a>,
-    buffer_device_address_features: vk::PhysicalDeviceBufferDeviceAddressFeatures<'a>,
-    shader_draw_parameters_features: vk::PhysicalDeviceShaderDrawParametersFeatures<'a>,
-    descriptor_indexing_features: vk::PhysicalDeviceDescriptorIndexingFeaturesEXT<'a>,
-    dynamic_rendering_features: vk::PhysicalDeviceDynamicRenderingFeaturesKHR<'a>,
-}
-
-impl RequiredDeviceFeatures<'_> {
-    pub fn new(
-        physical_device: &vk::PhysicalDevice,
-        instance: &ash::Instance,
-    ) -> Self {
-        let features = unsafe {
-            instance.get_physical_device_features(*physical_device)
-        };
-
-        let mut synchronization2_features =
-            vk::PhysicalDeviceSynchronization2FeaturesKHR::default()
-                .synchronization2(true);
-        let mut buffer_device_address_features =
-            vk::PhysicalDeviceBufferDeviceAddressFeatures::default()
-                .buffer_device_address(true);
-        let mut shader_draw_parameters_features =
-            vk::PhysicalDeviceShaderDrawParametersFeatures::default()
-                .shader_draw_parameters(true);
-        let mut descriptor_indexing_features =
-            vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default()
-                .runtime_descriptor_array(true)
-                .descriptor_binding_partially_bound(true)
-                .descriptor_binding_variable_descriptor_count(true)
-                .descriptor_binding_uniform_buffer_update_after_bind(true)
-                .descriptor_binding_storage_buffer_update_after_bind(true)
-                .descriptor_binding_sampled_image_update_after_bind(true);
-        let mut dynamic_rendering_features =
-            vk::PhysicalDeviceDynamicRenderingFeaturesKHR::default()
-                .dynamic_rendering(true);
-        
-        dynamic_rendering_features.p_next = &mut descriptor_indexing_features as *mut _ as *mut c_void;
-        descriptor_indexing_features.p_next = &mut shader_draw_parameters_features as *mut _ as *mut c_void;
-        shader_draw_parameters_features.p_next = &mut buffer_device_address_features as *mut _ as *mut c_void;
-        buffer_device_address_features.p_next = &mut synchronization2_features as *mut _ as *mut c_void;
-        
-        Self {
-            features,
-            synchronization2_features,
-            buffer_device_address_features,
-            shader_draw_parameters_features,
-            descriptor_indexing_features,
-            dynamic_rendering_features,
-        }
-    }
-    
-    pub fn device_create_info(&mut self) -> vk::DeviceCreateInfo {
-        vk::DeviceCreateInfo::default()
-            .enabled_features(&self.features)
-            .push_next(&mut self.dynamic_rendering_features)
     }
 }
 

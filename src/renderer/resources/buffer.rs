@@ -35,7 +35,7 @@ impl Buffer {
             let allocation_info = vk_mem::AllocationCreateInfo {
                 usage: mem_usage,
                 flags: if mapped {
-                    vk_mem::AllocationCreateFlags::MAPPED
+                    vk_mem::AllocationCreateFlags::MAPPED | vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE
                 } else {
                     vk_mem::AllocationCreateFlags::empty()
                 },
