@@ -3,14 +3,19 @@ use crate::renderer::contexts::device_ctx::transfer_ctx::TransferContext;
 use ash::vk;
 use color_eyre::eyre::{eyre, OptionExt};
 use color_eyre::Result;
+use std::mem::ManuallyDrop;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 
 static MEGABUFFER_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+pub struct MegaSubbuffer {
+    parent: Megabuffer,
+    allocation: AllocatedMegabufferRegion,
+}
+
 pub struct Megabuffer {
-    pub inner: Arc<Mutex<MegabufferInner>>,
-    parent: Option<Arc<Mutex<MegabufferInner>>>,
+    inner: Arc<Mutex<MegabufferInner>>,
     id: usize,
 }
 
@@ -18,7 +23,6 @@ impl Clone for Megabuffer {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            parent: self.parent.clone(),
             id: self.id,
         }
     }
@@ -27,6 +31,12 @@ impl Clone for Megabuffer {
 impl PartialEq for Megabuffer {
     fn eq(&self, other: &Self) -> bool {
         self.inner.lock().unwrap().id == other.inner.lock().unwrap().id
+    }
+}
+
+impl Megabuffer {
+    pub fn get_id(&self) -> usize {
+        self.id
     }
 }
 
@@ -39,7 +49,7 @@ pub trait MegabufferExt {
         device: Arc<ash::Device>,
         transfer_context: Arc<TransferContext>,
     ) -> Result<Megabuffer>;
-    fn allocate_subbuffer(&self, size: u64) -> Result<Megabuffer>;
+    fn allocate_subbuffer(&self, size: u64) -> Result<MegaSubbuffer>;
     fn allocate_region(&self, size: u64) -> Result<AllocatedMegabufferRegion>;
     fn deallocate_region(&self, region: &mut AllocatedMegabufferRegion) -> Result<()>;
     fn defragment(&self) -> Result<()>;
@@ -143,6 +153,7 @@ impl MegabufferExt for Megabuffer {
                 transfer_context,
             })),
             parent: Some(self.inner.clone()),
+            parent_allocation: Some(ManuallyDrop::new(allocated_region)),
             id,
         })
     }
@@ -166,7 +177,7 @@ impl MegabufferExt for Megabuffer {
             megabuffer: Some(self.clone()),
             megabuffer_id,
         };
-
+        
         Ok(allocated_region)
     }
 
@@ -484,6 +495,7 @@ impl AllocatedMegabufferRegion {
 
 impl Drop for AllocatedMegabufferRegion {
     fn drop(&mut self) {
+        log::error!("dropping region");
         let megabuffer = self.megabuffer
             .take()
             .expect("AllocatedMegabufferRegion does not have a reference to a Megabuffer");
